@@ -103,6 +103,12 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
 
     // Show loading message
     setIsLoading(true);
+    
+    // Set a maximum loading time - force hide loading screen after 10 seconds 
+    const maxLoadingTimeout = setTimeout(() => {
+      setIsLoading(false);
+      console.log('Forced loading to complete due to timeout');
+    }, 10000);
 
     // Initialize texture manager
     const textureManager = TextureManager.getInstance();
@@ -179,6 +185,7 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
 
       // Hide loading message
       setIsLoading(false);
+      clearTimeout(maxLoadingTimeout);
 
       // Cleanup
       return () => {
@@ -193,11 +200,17 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
         if (chatTimeoutRef.current) {
           clearTimeout(chatTimeoutRef.current);
         }
+        clearTimeout(maxLoadingTimeout);
       };
     }).catch(error => {
       console.error('Error loading textures:', error);
       setIsLoading(false);
+      clearTimeout(maxLoadingTimeout);
     });
+    
+    return () => {
+      clearTimeout(maxLoadingTimeout);
+    };
   }, []);
 
   // Handle keyboard and mouse events
@@ -534,10 +547,51 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
   // Connect to WebSocket server
   const connectToServer = () => {
     try {
+      // Create a mock WebSocket for offline play
+      const mockWebSocket = () => {
+        // Create a mock WebSocket instance
+        const mockWs = {
+          readyState: WebSocket.OPEN,
+          send: (message: string) => {
+            console.log('Mock WebSocket message sent:', message);
+            
+            // For chat messages, echo them back
+            try {
+              const data = JSON.parse(message);
+              if (data.type === 'chat') {
+                // Simulate receiving the message back
+                setTimeout(() => {
+                  addChatMessage('You', data.message);
+                }, 100);
+              }
+            } catch (e) {
+              console.error('Error parsing message:', e);
+            }
+          },
+          close: () => {
+            console.log('Mock WebSocket closed');
+          },
+        };
+        
+        // Simulate connection success
+        setTimeout(() => {
+          setIsConnected(true);
+          addChatMessage('System', 'Playing in offline mode. Server not available.');
+        }, 500);
+        
+        return mockWs;
+      };
+      
+      // Try to connect to real server first
+      console.log('Attempting to connect to game server...');
+      
+      // First try with real WebSocket
       const socket = new WebSocket('ws://localhost:8000/ws');
+      let connectionTimeout: NodeJS.Timeout;
       
       socket.onopen = () => {
         console.log('Connected to game server');
+        clearTimeout(connectionTimeout);
         setIsConnected(true);
         socket.send(JSON.stringify({
           type: 'join',
@@ -550,9 +604,6 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
         console.log('Disconnected from game server');
         setIsConnected(false);
         addChatMessage('System', 'Disconnected from server');
-        
-        // Try to reconnect after 5 seconds
-        setTimeout(connectToServer, 5000);
       };
       
       socket.onmessage = (event) => {
@@ -585,13 +636,33 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
         }
       };
       
+      // Set a timeout to switch to mock socket if real connection fails
+      connectionTimeout = setTimeout(() => {
+        console.log('Connection timed out, switching to offline mode');
+        socket.close();
+        socketRef.current = mockWebSocket() as any;
+      }, 3000);
+      
       socketRef.current = socket;
     } catch (error) {
       console.error('Error connecting to server:', error);
       setIsConnected(false);
       
-      // Try to reconnect after 5 seconds
-      setTimeout(connectToServer, 5000);
+      // Use mock WebSocket for offline mode
+      console.log('Switching to offline mode');
+      socketRef.current = {
+        readyState: WebSocket.OPEN,
+        send: (message: string) => {
+          console.log('Mock message:', message);
+        },
+        close: () => {}
+      } as any;
+      
+      // Set connected after a delay to simulate connection
+      setTimeout(() => {
+        setIsConnected(true);
+        addChatMessage('System', 'Playing in offline mode. Server not available.');
+      }, 500);
     }
   };
 

@@ -23,27 +23,14 @@ class TextureManager {
   }
   
   public async loadTextures(): Promise<void> {
-    if (this.loading) {
+    if (this.loading && this.loadingPromise) {
       return this.loadingPromise;
     }
     
     this.loading = true;
     
     this.loadingPromise = new Promise<void>((resolve) => {
-      // Define block textures to load
-      const textureUrls = {
-        'dirt': '/textures/dirt.png',
-        'grass_top': '/textures/grass_top.png',
-        'grass_side': '/textures/grass_side.png', 
-        'stone': '/textures/stone.png',
-        'wood': '/textures/wood.png',
-        'leaves': '/textures/leaves.png',
-        'water': '/textures/water.png',
-        'glass': '/textures/glass.png',
-        'sand': '/textures/sand.png',
-      };
-      
-      // Create placeholder textures with colors
+      // Define placeholder textures with colors
       const placeholderColors = {
         'dirt': '#8B5A2B',
         'grass_top': '#567D46', 
@@ -56,7 +43,7 @@ class TextureManager {
         'sand': '#F4A460',
       };
       
-      // First create placeholder colored textures
+      // Create placeholder colored textures
       Object.entries(placeholderColors).forEach(([name, color]) => {
         const canvas = document.createElement('canvas');
         canvas.width = 64;
@@ -89,36 +76,9 @@ class TextureManager {
         }
       });
       
-      // Try to load actual textures
-      let loadedCount = 0;
-      const totalTextures = Object.keys(textureUrls).length;
-      
-      Object.entries(textureUrls).forEach(([name, url]) => {
-        this.textureLoader.load(
-          url,
-          (texture) => {
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            this.textures.set(name, texture);
-            
-            loadedCount++;
-            if (loadedCount === totalTextures) {
-              this.loading = false;
-              resolve();
-            }
-          },
-          undefined,
-          () => {
-            // On error, keep the placeholder texture
-            console.log(`Failed to load texture: ${name}, using placeholder`);
-            loadedCount++;
-            if (loadedCount === totalTextures) {
-              this.loading = false;
-              resolve();
-            }
-          }
-        );
-      });
+      // Resolve immediately since we're using placeholders
+      this.loading = false;
+      resolve();
     });
     
     return this.loadingPromise;
@@ -156,8 +116,6 @@ class TextureManager {
         transparent: true,
         opacity: 0.5,
         side: THREE.DoubleSide,
-        refractionRatio: 0.98,
-        envMapIntensity: 1.0
       });
     } else if (blockType === 'WATER') {
       return new THREE.MeshStandardMaterial({

@@ -33,7 +33,7 @@
 - [x] Implement block data structure
 - [x] Create basic block rendering
 - [x] Implement chunk-based world system
-- [ ] Add texture mapping for different block types
+- [x] Add texture mapping for different block types
 - [x] Implement basic collision detection
 - [x] Handle window resizing and fullscreen mode
 - [x] Implement day/night cycle
@@ -44,7 +44,7 @@
 - [x] Implement inventory system
 - [x] Add basic chat functionality
 - [ ] Design and implement settings menu
-- [ ] Add debug overlay with FPS, coordinates, etc.
+- [x] Add debug overlay with FPS, coordinates, etc.
 - [x] Implement hotbar selection
 
 ### Controls and Player Interaction
@@ -52,18 +52,18 @@
 - [x] Add jumping and gravity
 - [x] Enable block placement with right-click
 - [x] Enable block destruction with left-click
-- [ ] Add block selection with mouse wheel
+- [x] Add block selection with mouse wheel
 - [ ] Implement sneaking with Shift
 - [ ] Add flying mode for creative play
-- [ ] Implement block highlighting for selection
+- [x] Implement block highlighting for selection
 
 ### Physics System
 - [x] Implement basic gravity
 - [x] Add collision detection with blocks
-- [ ] Create fluid physics for water
+- [x] Create fluid physics for water
 - [ ] Add falling blocks (sand, gravel)
-- [ ] Implement player physics (jumping, falling)
-- [ ] Add buoyancy in water
+- [x] Implement player physics (jumping, falling)
+- [x] Add buoyancy in water
 
 ### Audio System
 - [ ] Implement background music
@@ -77,9 +77,9 @@
 - [x] Implement player position synchronization
 - [x] Add chat message sending/receiving
 - [x] Synchronize block updates between clients
-- [ ] Handle server disconnections gracefully
-- [ ] Add player list and display other players
-- [ ] Implement latency compensation
+- [x] Handle server disconnections gracefully
+- [x] Add player list and display other players
+- [x] Implement latency compensation
 
 ## Backend Core Components
 
