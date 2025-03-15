@@ -1,6 +1,6 @@
 .home-page {
-  height: 100vh;
-  width: 100vw;
+  min-height: 100vh;
+  width: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -10,6 +10,8 @@
   background-position: center;
   color: white;
   padding: 2rem;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .home-content {
@@ -18,14 +20,16 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   text-align: center;
+  padding: 2rem 0;
 }
 
 .title {
   font-size: 4rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
   color: #4CAF50;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
   font-family: 'Minecraft', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -33,17 +37,21 @@
 
 .description {
   margin-bottom: 2rem;
+  max-width: 800px;
+  padding: 0 1rem;
 }
 
 .description p {
   font-size: 1.2rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
 }
 
 .buttons {
   display: flex;
   gap: 1rem;
   margin-bottom: 3rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .start-button, .settings-button {
@@ -53,6 +61,7 @@
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.3s ease;
+  min-width: 180px;
 }
 
 .start-button {
@@ -79,6 +88,9 @@
   justify-content: center;
   gap: 2rem;
   margin-top: 2rem;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 0 1rem;
 }
 
 .feature {
@@ -86,16 +98,54 @@
   padding: 1.5rem;
   border-radius: 8px;
   width: 250px;
+  margin-bottom: 1rem;
 }
 
 .feature h3 {
   color: #4CAF50;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.feature p {
+  line-height: 1.4;
 }
 
 .footer {
   text-align: center;
-  padding: 1rem 0;
+  padding: 1.5rem 0;
   font-size: 0.9rem;
   color: #aaa;
+  width: 100%;
+}
+
+/* Media queries for responsiveness */
+@media (max-width: 768px) {
+  .title {
+    font-size: 3rem;
+  }
+  
+  .feature {
+    width: 100%;
+    max-width: 350px;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-page {
+    padding: 1rem;
+  }
+  
+  .title {
+    font-size: 2.5rem;
+  }
+  
+  .buttons {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .start-button, .settings-button {
+    width: 100%;
+    max-width: 250px;
+  }
 } 

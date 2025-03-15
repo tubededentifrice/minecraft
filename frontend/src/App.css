@@ -7,12 +7,22 @@
 body, html {
   height: 100%;
   width: 100%;
-  overflow: hidden;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow-x: hidden;
 }
 
 #root, .app {
   height: 100vh;
   width: 100vw;
+}
+
+/* Ensure game view stays fullscreen with no overflow */
+.app > div {
+  width: 100%;
+  height: 100%;
+}
+
+/* For game view - keep the overflow hidden */
+.game-view {
   overflow: hidden;
 } 
