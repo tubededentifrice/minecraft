@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minecraft Clone</title>
+    <meta name="description" content="A browser-based Minecraft clone built with Three.js and Rust" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧱</text></svg>" />
+    <meta name="theme-color" content="#4CAF50" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      
+      body, html {
+        height: 100%;
+        width: 100%;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
+                    linear-gradient(to right, #2E7D32, #1B5E20);
+        color: white;
+      }
+      
+      #root {
+        height: 100vh;
+        width: 100vw;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 2rem;
+      }
+      
+      h1 {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        color: #4CAF50;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      }
+      
+      p {
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+        max-width: 600px;
+      }
+      
+      button {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 1.2rem;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        margin: 10px;
+      }
+      
+      button:hover {
+        background-color: #45a049;
+      }
+      
+      .settings-button {
+        background-color: #555;
+      }
+      
+      .settings-button:hover {
+        background-color: #666;
+      }
+      
+      .features {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        margin-top: 2rem;
+        flex-wrap: wrap;
+      }
+      
+      .feature {
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 1.5rem;
+        border-radius: 8px;
+        width: 250px;
+      }
+      
+      .feature h3 {
+        color: #4CAF50;
+        margin-bottom: 0.5rem;
+      }
+      
+      footer {
+        margin-top: 3rem;
+        text-align: center;
+        color: #aaa;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <h1>Minecraft Clone</h1>
+      <p>A browser-based Minecraft clone built with Three.js and Rust</p>
+      <p>Explore a procedurally generated world, build structures, and survive!</p>
+      
+      <div>
+        <button class="start-button" onclick="alert('Game would start here!')">Start Game</button>
+        <button class="settings-button">Settings</button>
+      </div>
+      
+      <div class="features">
+        <div class="feature">
+          <h3>Voxel World</h3>
+          <p>Explore a fully interactive 3D voxel world</p>
+        </div>
+        <div class="feature">
+          <h3>Build & Craft</h3>
+          <p>Gather resources and build amazing structures</p>
+        </div>
+        <div class="feature">
+          <h3>Multiplayer</h3>
+          <p>Play with friends in a shared world</p>
+        </div>
+      </div>
+      
+      <footer>
+        <p>© 2025 Minecraft Clone Project</p>
+        <p>Not affiliated with Mojang or Microsoft</p>
+      </footer>
+    </div>
+    
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('Minecraft Clone loaded successfully');
+      });
+    </script>
+  </body>
+</html> 
