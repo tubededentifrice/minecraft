@@ -1,0 +1,23 @@
+[package]
+name = "minecraft_world"
+version = "0.1.0"
+edition = "2021"
+authors = ["Minecraft Clone Developer"]
+description = "World generation and management for the Minecraft clone"
+
+[dependencies]
+minecraft_util = { path = "../minecraft_util" }
+minecraft_core = { path = "../minecraft_core" }
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+nalgebra = "0.32"
+rand = "0.8"
+noise = "0.8"
+dashmap = "5.4"
+rayon = "1.7"
+futures = "0.3"
+tokio = { version = "1.28", features = ["full"] }
+async-trait = "0.1" 

@@ -1,0 +1,66 @@
+{
+  "server": {
+    "name": "Minecraft Clone Server",
+    "description": "A Minecraft-like server built with Rust",
+    "port": 8080,
+    "api_port": 8081,
+    "max_players": 50,
+    "authentication": true,
+    "pvp_enabled": true,
+    "view_distance": 8,
+    "simulation_distance": 10,
+    "worlds_path": "data/worlds",
+    "plugins_path": "plugins",
+    "motd": "Welcome to the Minecraft Clone Server!"
+  },
+  "world": {
+    "default_world": "main",
+    "default_generator": "overworld",
+    "seed": 12345,
+    "spawn_position": {
+      "x": 0,
+      "y": 70,
+      "z": 0
+    },
+    "dimensions": [
+      "overworld",
+      "nether",
+      "end"
+    ],
+    "world_size": {
+      "x": 2000,
+      "y": 256,
+      "z": 2000
+    },
+    "generate_structures": true,
+    "day_night_cycle_speed": 1.0
+  },
+  "gameplay": {
+    "default_gamemode": "survival",
+    "difficulty": "normal",
+    "allow_flight": false,
+    "health_regeneration": true,
+    "hunger": true,
+    "fall_damage": true,
+    "fire_damage": true,
+    "drowning": true,
+    "mob_spawning": true,
+    "mob_griefing": true,
+    "natural_regeneration": true
+  },
+  "performance": {
+    "max_tps": 20,
+    "max_entities_per_chunk": 100,
+    "max_particles": 10000,
+    "entity_activation_range": 32,
+    "entity_despawn_range": 128,
+    "mob_spawn_range": 8
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/server.log",
+    "log_chat": true,
+    "log_commands": true,
+    "log_connections": true
+  }
+} 

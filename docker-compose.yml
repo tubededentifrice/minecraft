@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  minecraft-db:
+    image: postgres:13-alpine
+    environment:
+      - POSTGRES_PASSWORD=minecraft_password
+      - POSTGRES_USER=minecraft_user
+      - POSTGRES_DB=minecraft_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  # Redis for caching
+  minecraft-redis:
+    image: redis:6-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Frontend web server (nginx)
+  minecraft-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local 
