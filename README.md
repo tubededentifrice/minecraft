@@ -14,47 +14,20 @@ This project aims to create a faithful Minecraft-like experience in the browser 
 
 The game supports core Minecraft gameplay elements including block manipulation, crafting, survival mechanics, and more, while being optimized for browser environments.
 
-## Documentation
+## Project Structure
 
-This repository includes comprehensive documentation to guide development:
+The project is organized into several key components:
 
-- [Original Specifications](./SPECS.md) - The initial project requirements
-- [Enhanced Specifications](./ENHANCED_SPECS.md) - Detailed implementation considerations
-- [TODO List](./TODO.md) - Comprehensive task breakdown
-- [Project Structure](./PROJECT_STRUCTURE.md) - Recommended directory and file organization
-- [Development Roadmap](./ROADMAP.md) - Phased implementation plan with milestones
+### Backend
+- `minecraft_core`: Core game mechanics and data structures
+- `minecraft_util`: Utility functions and helpers
+- `minecraft_world`: World generation and management
+- `minecraft_server`: Game server implementation
 
-## Architecture Overview
-
-### Frontend (Three.js)
-
-The frontend is built with Three.js and TypeScript, providing:
-
-- Efficient chunk-based rendering with greedy meshing
-- Client-side prediction for responsive gameplay
-- Advanced graphics features including custom shaders
-- Responsive UI for in-game interactions and menus
-- Optimized asset loading and management
-
-### Backend (Rust)
-
-The backend server is implemented in Rust for maximum performance:
-
-- Asynchronous architecture using Tokio
-- WebSocket communication with binary protocol
-- Entity Component System (ECS) for game logic
-- Efficient world generation and persistence
-- Scalable design for handling many concurrent players
-
-### Networking
-
-The client-server communication uses:
-
-- WebSockets for real-time bidirectional communication
-- Binary protocol with MessagePack or Protocol Buffers
-- Client-side prediction with server reconciliation
-- Optimized chunk streaming and entity updates
-- Secure authentication and session management
+### Frontend
+- React-based UI with Three.js for 3D rendering
+- WebSocket communication with the backend
+- State management using Zustand
 
 ## Getting Started
 
@@ -67,54 +40,100 @@ For development, you'll need:
 - Docker and Docker Compose for local environment
 - Git for version control
 
-### Development Setup
+### Setup and Installation
 
-1. Clone the repository:
+#### Using Docker (Recommended)
+
+1. Start the supporting services (PostgreSQL and Redis):
    ```bash
-   git clone https://github.com/yourusername/minecraft-clone.git
-   cd minecraft-clone
+   ./start.sh
    ```
 
-2. Set up the frontend:
+2. Start the backend server:
+   ```bash
+   cd backend && ./scripts/start-server.sh
+   ```
+
+3. Start the frontend development server:
+   ```bash
+   cd frontend && npm start
+   ```
+
+#### Manual Setup
+
+1. Backend Setup:
+   ```bash
+   cd backend
+   cargo build
+   cargo run --bin minecraft_server
+   ```
+
+2. Frontend Setup:
    ```bash
    cd frontend
    npm install
    npm run dev
    ```
 
-3. Set up the backend:
+3. Access the application at http://localhost:3000
+
+## Development
+
+### Backend Development
+
+The backend is written in Rust and organized into several crates:
+
+- `minecraft_core`: Contains block types, physics, and other core game mechanics
+- `minecraft_world`: Implements world generation, chunk management, and terrain features
+- `minecraft_server`: Provides the WebSocket server and API endpoints
+
+To run the backend in development mode:
+
+```bash
+cd backend
+cargo run --bin minecraft_server
+```
+
+### Frontend Development
+
+The frontend is built with React, TypeScript, and Three.js:
+
+```bash
+cd frontend
+npm run dev
+```
+
+## Docker Configuration
+
+The project includes Docker configuration for easy deployment:
+
+- `backend/Dockerfile`: Builds the Rust backend services
+- `frontend/Dockerfile`: Sets up an Nginx server for the frontend
+- `docker-compose.yml`: Orchestrates all services including PostgreSQL and Redis
+
+## Production Deployment
+
+For production deployment:
+
+1. Build the Docker images:
    ```bash
-   cd backend
-   cargo build
-   cargo run
+   docker-compose build
    ```
 
-4. Alternatively, use Docker Compose:
+2. Start the services:
    ```bash
-   docker-compose up
+   docker-compose up -d
    ```
-
-5. Access the development server at http://localhost:3000
-
-## Development Workflow
-
-See the [Development Roadmap](./ROADMAP.md) for the phased implementation plan and [TODO List](./TODO.md) for specific tasks.
-
-## Project Structure
-
-The recommended project structure is detailed in [Project Structure](./PROJECT_STRUCTURE.md).
 
 ## Contributing
 
-Contributions are welcome! Please review the [TODO List](./TODO.md) for tasks that need implementation.
+Contributions are welcome! Please follow these steps:
 
-### Development Standards
-
-- Use TypeScript for frontend code
-- Follow Rust best practices for backend code
-- Write tests for all new features
-- Document code thoroughly
-- Submit PRs with clear descriptions
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 

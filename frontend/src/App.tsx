@@ -1,19 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
+import HomePage from './components/HomePage';
+import GameView from './components/GameView';
+import './App.css';
 
 function App() {
+  const [gameStarted, setGameStarted] = useState(false);
+
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>Minecraft Clone</h1>
-      </header>
-      <main>
-        <p>
-          Welcome to the Minecraft Clone! This is a placeholder UI.
-        </p>
-        <button>
-          Start Game
-        </button>
-      </main>
+      {!gameStarted ? (
+        <HomePage onStartGame={() => setGameStarted(true)} />
+      ) : (
+        <GameView onExit={() => setGameStarted(false)} />
+      )}
     </div>
   );
 }
