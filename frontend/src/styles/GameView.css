@@ -23,6 +23,26 @@
   z-index: 10;
 }
 
+/* Connection status */
+.connection-status {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.connection-status.connected {
+  color: #4CAF50;
+}
+
+.connection-status.disconnected {
+  color: #FF5252;
+}
+
+/* Crosshair */
 .crosshair {
   position: absolute;
   top: 50%;
@@ -33,6 +53,27 @@
   text-shadow: 1px 1px 2px black;
 }
 
+/* Health bar */
+.health-bar {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 15px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border: 2px solid #333;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.health-fill {
+  height: 100%;
+  background-color: #FF5252;
+  width: 100%;
+}
+
+/* Hotbar */
 .hotbar {
   position: absolute;
   bottom: 20px;
@@ -48,6 +89,9 @@
   background-color: rgba(0, 0, 0, 0.5);
   border: 2px solid #555;
   border-radius: 4px;
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .hotbar-slot.selected {
@@ -55,6 +99,93 @@
   background-color: rgba(255, 255, 255, 0.2);
 }
 
+.hotbar-item {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 36px;
+  height: 36px;
+  border-radius: 2px;
+}
+
+.hotbar-count {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.8rem;
+  color: white;
+  text-shadow: 1px 1px 1px black;
+}
+
+/* Debug info */
+.debug-info {
+  position: absolute;
+  top: 10px;
+  right: 100px;
+  padding: 5px 10px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: white;
+  text-align: right;
+}
+
+/* Chat window */
+.chat-window {
+  position: absolute;
+  bottom: 100px;
+  left: 20px;
+  width: 300px;
+  pointer-events: auto;
+}
+
+.chat-messages {
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 10px;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.chat-message {
+  margin-bottom: 5px;
+  color: white;
+  font-size: 0.9rem;
+}
+
+.chat-sender {
+  font-weight: bold;
+  color: #4CAF50;
+}
+
+.chat-input-form {
+  margin-top: 5px;
+  width: 100%;
+}
+
+.chat-input {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+}
+
+/* Game controls help */
+.controls-help {
+  position: absolute;
+  bottom: 100px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: white;
+  text-align: right;
+}
+
+/* Exit button */
 .exit-button {
   position: absolute;
   top: 20px;
