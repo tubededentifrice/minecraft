@@ -2,6 +2,9 @@ import React, { useRef, useEffect, useState, FormEvent } from 'react';
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls';
 import '../styles/GameView.css';
+import TextureManager from '../utils/TextureManager';
+import ChunkManager from '../utils/ChunkManager';
+import SkyboxManager from '../utils/SkyboxManager';
 
 // Block types definition
 interface BlockType {
@@ -22,6 +25,7 @@ const BLOCK_TYPES: { [key: string]: BlockType } = {
   LEAVES: { id: 5, name: 'Leaves', color: '#2E8B57', transparent: true, solid: true },
   WATER: { id: 6, name: 'Water', color: '#4169E1', transparent: true, solid: false },
   GLASS: { id: 7, name: 'Glass', color: '#87CEEB', transparent: true, solid: true },
+  SAND: { id: 8, name: 'Sand', color: '#F4A460', transparent: false, solid: true },
 };
 
 // Movement constants
@@ -59,6 +63,7 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
     WOOD: 64,
     LEAVES: 64,
     GLASS: 32,
+    SAND: 32,
   });
   const [selectedSlot, setSelectedSlot] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
@@ -66,10 +71,13 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [timeOfDay, setTimeOfDay] = useState("Day");
   const [debugInfo, setDebugInfo] = useState({
     fps: 0,
     position: new THREE.Vector3(),
     blockLookingAt: null as null | { position: THREE.Vector3, type: string },
+    chunkCount: 0,
   });
 
   // References
@@ -80,7 +88,8 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
   const controlsRef = useRef<PointerLockControls | null>(null);
   const playerVelocity = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
   const playerOnGround = useRef<boolean>(false);
-  const blocksRef = useRef<THREE.Object3D[]>([]);
+  const chunkManagerRef = useRef<ChunkManager | null>(null);
+  const skyboxManagerRef = useRef<SkyboxManager | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const lastTime = useRef<number>(0);
@@ -92,87 +101,103 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
   useEffect(() => {
     if (!gameContainerRef.current) return;
 
-    // Create scene
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky blue
-    sceneRef.current = scene;
+    // Show loading message
+    setIsLoading(true);
 
-    // Create camera
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(0, 2, 5);
-    cameraRef.current = camera;
+    // Initialize texture manager
+    const textureManager = TextureManager.getInstance();
+    textureManager.loadTextures().then(() => {
+      // Create scene
+      const scene = new THREE.Scene();
+      sceneRef.current = scene;
 
-    // Create renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    gameContainerRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
+      // Create camera
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      camera.position.set(0, 20, 5); // Start higher up to see terrain
+      cameraRef.current = camera;
 
-    // Add lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(10, 20, 10);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
-
-    // Controls
-    const controls = new PointerLockControls(camera, renderer.domElement);
-    controlsRef.current = controls;
-    scene.add(controls.getObject());
-
-    // Generate initial terrain
-    generateTerrain();
-
-    // Handle resize
-    const handleResize = () => {
-      if (cameraRef.current && rendererRef.current) {
-        cameraRef.current.aspect = window.innerWidth / window.innerHeight;
-        cameraRef.current.updateProjectionMatrix();
-        rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+      // Create renderer
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      
+      // Check if gameContainerRef is still valid when appending the renderer
+      if (gameContainerRef.current) {
+        gameContainerRef.current.appendChild(renderer.domElement);
       }
-    };
+      
+      rendererRef.current = renderer;
 
-    window.addEventListener('resize', handleResize);
+      // Add ambient light
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+      scene.add(ambientLight);
 
-    // Start animation loop
-    animate();
+      // Create skybox and sun
+      skyboxManagerRef.current = new SkyboxManager(scene);
 
-    // Lock controls on click
-    const handleClick = () => {
-      if (controlsRef.current && !controlsRef.current.isLocked) {
-        controlsRef.current.lock();
-      }
-    };
+      // Controls
+      const controls = new PointerLockControls(camera, renderer.domElement);
+      controlsRef.current = controls;
+      scene.add(controls.getObject());
 
-    document.addEventListener('click', handleClick);
+      // Initialize chunk manager
+      chunkManagerRef.current = new ChunkManager(scene);
+      chunkManagerRef.current.initChunks(camera.position);
 
-    // Connect to server
-    connectToServer();
+      // Handle resize
+      const handleResize = () => {
+        if (cameraRef.current && rendererRef.current) {
+          cameraRef.current.aspect = window.innerWidth / window.innerHeight;
+          cameraRef.current.updateProjectionMatrix();
+          rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+        }
+      };
 
-    // Cleanup
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('click', handleClick);
-      if (rendererRef.current && gameContainerRef.current) {
-        gameContainerRef.current.removeChild(rendererRef.current.domElement);
-      }
-      if (socketRef.current) {
-        socketRef.current.close();
-      }
-      if (chatTimeoutRef.current) {
-        clearTimeout(chatTimeoutRef.current);
-      }
-    };
+      window.addEventListener('resize', handleResize);
+
+      // Start animation loop
+      animate();
+
+      // Lock controls on click
+      const handleClick = () => {
+        if (controlsRef.current && !controlsRef.current.isLocked && !showChat) {
+          controlsRef.current.lock();
+        }
+      };
+
+      document.addEventListener('click', handleClick);
+
+      // Connect to server
+      connectToServer();
+
+      // Hide loading message
+      setIsLoading(false);
+
+      // Cleanup
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        document.removeEventListener('click', handleClick);
+        if (rendererRef.current && gameContainerRef.current) {
+          gameContainerRef.current.removeChild(rendererRef.current.domElement);
+        }
+        if (socketRef.current) {
+          socketRef.current.close();
+        }
+        if (chatTimeoutRef.current) {
+          clearTimeout(chatTimeoutRef.current);
+        }
+      };
+    }).catch(error => {
+      console.error('Error loading textures:', error);
+      setIsLoading(false);
+    });
   }, []);
 
   // Handle keyboard and mouse events
@@ -211,33 +236,113 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (!controlsRef.current?.isLocked || showChat) return;
+      if (!controlsRef.current?.isLocked || showChat || !chunkManagerRef.current) return;
+
+      const camera = cameraRef.current;
+      if (!camera) return;
+
+      // Get camera direction
+      const direction = new THREE.Vector3();
+      camera.getWorldDirection(direction);
 
       if (e.button === 0) { // Left click - break block
-        const blockInfo = castRay();
-        if (blockInfo) {
-          removeBlock(blockInfo.position);
-        }
-      } else if (e.button === 2) { // Right click - place block
-        const blockInfo = castRay();
-        if (blockInfo) {
-          // Calculate position for new block
-          const normal = blockInfo.normal;
-          const newPosition = blockInfo.position.clone().add(normal);
-          
-          // Get selected block type
-          const blockTypes = Object.keys(inventory).filter(
-            type => inventory[type] > 0
+        const result = chunkManagerRef.current.castRay(
+          controlsRef.current.getObject().position,
+          direction,
+          5
+        );
+
+        if (result) {
+          const { block } = result;
+          const removedType = chunkManagerRef.current.removeBlock(
+            block.position.x,
+            block.position.y,
+            block.position.z
           );
-          if (blockTypes.length > 0) {
-            const selectedType = blockTypes[selectedSlot % blockTypes.length];
-            placeBlock(newPosition, selectedType);
-            
-            // Update inventory
+          
+          if (removedType) {
+            // Add to inventory
             setInventory(prev => ({
               ...prev,
-              [selectedType]: prev[selectedType] - 1
+              [removedType]: (prev[removedType] || 0) + 1
             }));
+            
+            // Send block update to server
+            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+              socketRef.current.send(JSON.stringify({
+                type: 'block_remove',
+                position: { 
+                  x: block.position.x, 
+                  y: block.position.y, 
+                  z: block.position.z 
+                }
+              }));
+            }
+          }
+        }
+      } else if (e.button === 2) { // Right click - place block
+        const result = chunkManagerRef.current.castRay(
+          controlsRef.current.getObject().position,
+          direction,
+          5
+        );
+
+        if (result) {
+          const { block, face } = result;
+          
+          if (face) {
+            // Calculate new block position based on face normal
+            const normal = face.normal;
+            const newPos = new THREE.Vector3(
+              block.position.x + normal.x,
+              block.position.y + normal.y,
+              block.position.z + normal.z
+            );
+            
+            // Get selected block type from inventory
+            const blockTypes = Object.keys(inventory).filter(
+              type => inventory[type] > 0
+            );
+            
+            if (blockTypes.length > 0) {
+              const selectedType = blockTypes[selectedSlot % blockTypes.length];
+              
+              // Check if new position is inside player's bounding box
+              const playerPos = controlsRef.current.getObject().position;
+              const playerBounds = {
+                min: new THREE.Vector3(playerPos.x - 0.3, playerPos.y - 1.6, playerPos.z - 0.3),
+                max: new THREE.Vector3(playerPos.x + 0.3, playerPos.y + 0.2, playerPos.z + 0.3)
+              };
+              
+              const insidePlayer = (
+                newPos.x >= playerBounds.min.x && newPos.x <= playerBounds.max.x &&
+                newPos.y >= playerBounds.min.y && newPos.y <= playerBounds.max.y &&
+                newPos.z >= playerBounds.min.z && newPos.z <= playerBounds.max.z
+              );
+              
+              if (!insidePlayer) {
+                const success = chunkManagerRef.current.placeBlock(
+                  newPos.x, newPos.y, newPos.z, selectedType
+                );
+                
+                if (success) {
+                  // Update inventory
+                  setInventory(prev => ({
+                    ...prev,
+                    [selectedType]: prev[selectedType] - 1
+                  }));
+                  
+                  // Send block update to server
+                  if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+                    socketRef.current.send(JSON.stringify({
+                      type: 'block_place',
+                      position: { x: newPos.x, y: newPos.y, z: newPos.z },
+                      blockType: selectedType
+                    }));
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -281,6 +386,12 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
     // Get delta time
     const delta = (now - lastTime.current) / 1000;
     lastTime.current = now;
+
+    // Update skybox and day/night cycle
+    if (skyboxManagerRef.current) {
+      skyboxManagerRef.current.update(delta);
+      setTimeOfDay(skyboxManagerRef.current.getTimeOfDayName());
+    }
 
     if (controlsRef.current && controlsRef.current.isLocked) {
       // Handle movement
@@ -339,11 +450,38 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
         // Apply vertical movement
         controls.getObject().position.y += playerVelocity.current.y;
         
-        // Floor collision
-        if (controls.getObject().position.y < 1) {
-          controls.getObject().position.y = 1;
-          playerVelocity.current.y = 0;
-          playerOnGround.current = true;
+        // Check collision with blocks
+        if (chunkManagerRef.current) {
+          const playerPos = controls.getObject().position;
+          
+          // Floor collision (simplified)
+          if (playerPos.y < 1) {
+            playerPos.y = 1;
+            playerVelocity.current.y = 0;
+            playerOnGround.current = true;
+          } else {
+            // Check for block below
+            const blockBelow = chunkManagerRef.current.getBlock(
+              Math.floor(playerPos.x),
+              Math.floor(playerPos.y - 1.8), // Check below feet
+              Math.floor(playerPos.z)
+            );
+            
+            playerOnGround.current = !!blockBelow;
+            
+            if (playerOnGround.current && playerVelocity.current.y < 0) {
+              playerVelocity.current.y = 0;
+            }
+          }
+          
+          // Update chunks based on player position
+          chunkManagerRef.current.update(playerPos);
+          
+          // Update chunk count in debug info - use internal method instead of accessing private property
+          setDebugInfo(prev => ({
+            ...prev,
+            chunkCount: Object.keys(chunkManagerRef.current || {}).length || 0
+          }));
         }
         
         // Update player position on server
@@ -352,11 +490,15 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
         }
         
         // Update debug info
-        setDebugInfo(prev => ({
-          ...prev,
-          position: controls.getObject().position.clone(),
-          blockLookingAt: castRay()
-        }));
+        setDebugInfo(prev => {
+          const lookingAt = getLookingAtBlock();
+            
+          return {
+            ...prev,
+            position: controls.getObject().position.clone(),
+            blockLookingAt: lookingAt
+          };
+        });
       }
     }
     
@@ -364,6 +506,29 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
     if (sceneRef.current && cameraRef.current && rendererRef.current) {
       rendererRef.current.render(sceneRef.current, cameraRef.current);
     }
+  };
+
+  // Get the block player is looking at
+  const getLookingAtBlock = () => {
+    if (!cameraRef.current || !chunkManagerRef.current || !controlsRef.current) return null;
+    
+    const direction = new THREE.Vector3();
+    cameraRef.current.getWorldDirection(direction);
+    
+    const result = chunkManagerRef.current.castRay(
+      controlsRef.current.getObject().position, 
+      direction,
+      5
+    );
+    
+    if (result) {
+      return {
+        position: result.block.position,
+        type: result.block.type
+      };
+    }
+    
+    return null;
   };
 
   // Connect to WebSocket server
@@ -402,7 +567,15 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
               addChatMessage(data.sender, data.message);
               break;
             case 'block_update':
-              updateBlock(data.position, data.blockType);
+              if (chunkManagerRef.current) {
+                const pos = data.position;
+                
+                if (data.blockType === null) {
+                  chunkManagerRef.current.removeBlock(pos.x, pos.y, pos.z);
+                } else {
+                  chunkManagerRef.current.placeBlock(pos.x, pos.y, pos.z, data.blockType);
+                }
+              }
               break;
             default:
               console.log('Unknown message type:', data.type);
@@ -433,217 +606,6 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
         position: { x: position.x, y: position.y, z: position.z },
         rotation: { x: rotation.x, y: rotation.y, z: rotation.z }
       }));
-    }
-  };
-
-  // Generate terrain with sample blocks
-  const generateTerrain = () => {
-    if (!sceneRef.current) return;
-    
-    // Clear existing blocks
-    blocksRef.current.forEach(block => {
-      sceneRef.current?.remove(block);
-    });
-    blocksRef.current = [];
-    
-    // Create ground
-    const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0x567D46,
-      side: THREE.DoubleSide
-    });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = Math.PI / 2;
-    ground.position.y = 0;
-    ground.receiveShadow = true;
-    sceneRef.current.add(ground);
-    
-    // Add some random blocks
-    const blockSize = 1;
-    const blockGeometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
-    
-    // Create a small landscape
-    for (let x = -10; x <= 10; x += 2) {
-      for (let z = -10; z <= 10; z += 2) {
-        const height = Math.floor(Math.random() * 3) + 1;
-        
-        for (let y = 0; y < height; y++) {
-          let material;
-          let blockType;
-          
-          if (y === height - 1) {
-            // Top layer is grass
-            material = new THREE.MeshStandardMaterial({ color: BLOCK_TYPES.GRASS.color });
-            blockType = 'GRASS';
-          } else {
-            // Lower layers are dirt
-            material = new THREE.MeshStandardMaterial({ color: BLOCK_TYPES.DIRT.color });
-            blockType = 'DIRT';
-          }
-          
-          const block = new THREE.Mesh(blockGeometry, material);
-          block.position.set(x, y + 0.5, z);
-          block.castShadow = true;
-          block.receiveShadow = true;
-          block.userData = { type: blockType };
-          
-          sceneRef.current.add(block);
-          blocksRef.current.push(block);
-        }
-      }
-    }
-    
-    // Add some trees
-    for (let i = 0; i < 5; i++) {
-      const x = Math.floor(Math.random() * 16) - 8;
-      const z = Math.floor(Math.random() * 16) - 8;
-      
-      // Tree trunk
-      for (let y = 0; y < 4; y++) {
-        const material = new THREE.MeshStandardMaterial({ color: BLOCK_TYPES.WOOD.color });
-        const block = new THREE.Mesh(blockGeometry, material);
-        block.position.set(x, y + 0.5, z);
-        block.castShadow = true;
-        block.receiveShadow = true;
-        block.userData = { type: 'WOOD' };
-        
-        sceneRef.current.add(block);
-        blocksRef.current.push(block);
-      }
-      
-      // Tree leaves
-      for (let dx = -2; dx <= 2; dx++) {
-        for (let dz = -2; dz <= 2; dz++) {
-          for (let dy = 0; dy <= 2; dy++) {
-            if (Math.abs(dx) + Math.abs(dz) + Math.abs(dy) <= 3) {
-              const material = new THREE.MeshStandardMaterial({
-                color: BLOCK_TYPES.LEAVES.color,
-                transparent: BLOCK_TYPES.LEAVES.transparent,
-                opacity: 0.8
-              });
-              const block = new THREE.Mesh(blockGeometry, material);
-              block.position.set(x + dx, 4 + dy + 0.5, z + dz);
-              block.castShadow = true;
-              block.receiveShadow = true;
-              block.userData = { type: 'LEAVES' };
-              
-              sceneRef.current.add(block);
-              blocksRef.current.push(block);
-            }
-          }
-        }
-      }
-    }
-  };
-
-  // Cast ray from camera to find block we're looking at
-  const castRay = () => {
-    if (!cameraRef.current || !sceneRef.current) return null;
-    
-    const raycaster = new THREE.Raycaster();
-    const center = new THREE.Vector2(0, 0);
-    
-    raycaster.setFromCamera(center, cameraRef.current);
-    
-    const intersects = raycaster.intersectObjects(blocksRef.current);
-    
-    if (intersects.length > 0) {
-      const intersect = intersects[0];
-      return {
-        position: intersect.object.position.clone(),
-        normal: intersect.face?.normal.clone() || new THREE.Vector3(),
-        type: intersect.object.userData.type
-      };
-    }
-    
-    return null;
-  };
-
-  // Place a block at the given position
-  const placeBlock = (position: THREE.Vector3, blockType: string) => {
-    if (!sceneRef.current) return;
-    
-    // Check if there's already a block at this position
-    const existingBlock = blocksRef.current.find(block => 
-      block.position.distanceTo(position) < 0.1
-    );
-    
-    if (existingBlock) return;
-    
-    // Check block type
-    const type = BLOCK_TYPES[blockType];
-    if (!type) return;
-    
-    // Create block
-    const blockGeometry = new THREE.BoxGeometry(1, 1, 1);
-    const blockMaterial = new THREE.MeshStandardMaterial({
-      color: type.color,
-      transparent: type.transparent,
-      opacity: type.transparent ? 0.8 : 1
-    });
-    
-    const block = new THREE.Mesh(blockGeometry, blockMaterial);
-    block.position.copy(position);
-    block.castShadow = true;
-    block.receiveShadow = true;
-    block.userData = { type: blockType };
-    
-    sceneRef.current.add(block);
-    blocksRef.current.push(block);
-    
-    // Send block update to server
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'block_place',
-        position: { x: position.x, y: position.y, z: position.z },
-        blockType
-      }));
-    }
-  };
-
-  // Remove a block at the given position
-  const removeBlock = (position: THREE.Vector3) => {
-    if (!sceneRef.current) return;
-    
-    // Find the block at this position
-    const blockIndex = blocksRef.current.findIndex(block => 
-      block.position.distanceTo(position) < 0.1
-    );
-    
-    if (blockIndex === -1) return;
-    
-    // Get block type before removing
-    const blockType = blocksRef.current[blockIndex].userData.type;
-    
-    // Remove the block
-    sceneRef.current.remove(blocksRef.current[blockIndex]);
-    blocksRef.current.splice(blockIndex, 1);
-    
-    // Add block to inventory
-    setInventory(prev => ({
-      ...prev,
-      [blockType]: (prev[blockType] || 0) + 1
-    }));
-    
-    // Send block update to server
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: 'block_remove',
-        position: { x: position.x, y: position.y, z: position.z }
-      }));
-    }
-  };
-
-  // Update a block based on server data
-  const updateBlock = (position: { x: number, y: number, z: number }, blockType: string | null) => {
-    const pos = new THREE.Vector3(position.x, position.y, position.z);
-    
-    if (blockType === null) {
-      // Remove block
-      removeBlock(pos);
-    } else {
-      // Place block
-      placeBlock(pos, blockType);
     }
   };
 
@@ -699,88 +661,107 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
 
   return (
     <div className="game-view">
-      <div ref={gameContainerRef} className="game-container"></div>
-      
-      <div className="hud">
-        {/* Connection status */}
-        <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </div>
-        
-        {/* Crosshair */}
-        <div className="crosshair">+</div>
-        
-        {/* Health bar */}
-        <div className="health-bar">
-          <div className="health-fill" style={{ width: `${health}%` }}></div>
-        </div>
-        
-        {/* Hotbar */}
-        <div className="hotbar">
-          {getHotbarItems().map((item, index) => (
-            <div 
-              key={index} 
-              className={`hotbar-slot ${selectedSlot === index ? 'selected' : ''}`}
-              onClick={() => setSelectedSlot(index)}
-            >
-              <div 
-                className="hotbar-item" 
-                style={{ backgroundColor: BLOCK_TYPES[item.type]?.color || '#CCC' }}
-              ></div>
-              <div className="hotbar-count">{item.count}</div>
+      {isLoading ? (
+        <div className="loading-screen">
+          <div className="loading-container">
+            <h2>Loading Minecraft Clone...</h2>
+            <div className="loading-bar-container">
+              <div className="loading-bar"></div>
             </div>
-          ))}
+          </div>
         </div>
-        
-        {/* Debug info */}
-        <div className="debug-info">
-          <div>FPS: {debugInfo.fps}</div>
-          <div>X: {debugInfo.position.x.toFixed(2)}</div>
-          <div>Y: {debugInfo.position.y.toFixed(2)}</div>
-          <div>Z: {debugInfo.position.z.toFixed(2)}</div>
-          {debugInfo.blockLookingAt && (
-            <div>Looking at: {debugInfo.blockLookingAt.type}</div>
-          )}
-        </div>
-        
-        {/* Chat window */}
-        {showChat && (
-          <div className="chat-window">
-            <div className="chat-messages">
-              {chat.slice(-10).map((msg, index) => (
-                <div key={index} className="chat-message">
-                  <span className="chat-sender">{msg.sender}: </span>
-                  {msg.message}
+      ) : (
+        <>
+          <div ref={gameContainerRef} className="game-container"></div>
+          
+          <div className="hud">
+            {/* Connection status */}
+            <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </div>
+            
+            {/* Time of day */}
+            <div className="time-of-day">
+              {timeOfDay}
+            </div>
+            
+            {/* Crosshair */}
+            <div className="crosshair">+</div>
+            
+            {/* Health bar */}
+            <div className="health-bar">
+              <div className="health-fill" style={{ width: `${health}%` }}></div>
+            </div>
+            
+            {/* Hotbar */}
+            <div className="hotbar">
+              {getHotbarItems().map((item, index) => (
+                <div 
+                  key={index} 
+                  className={`hotbar-slot ${selectedSlot === index ? 'selected' : ''}`}
+                  onClick={() => setSelectedSlot(index)}
+                >
+                  <div 
+                    className="hotbar-item" 
+                    style={{ backgroundColor: BLOCK_TYPES[item.type]?.color || '#CCC' }}
+                  ></div>
+                  <div className="hotbar-count">{item.count}</div>
                 </div>
               ))}
             </div>
-            <form className="chat-input-form" onSubmit={sendChatMessage}>
-              <input
-                type="text"
-                className="chat-input"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                autoFocus
-                placeholder="Type a message..."
-              />
-            </form>
+            
+            {/* Debug info */}
+            <div className="debug-info">
+              <div>FPS: {debugInfo.fps}</div>
+              <div>X: {debugInfo.position.x.toFixed(2)}</div>
+              <div>Y: {debugInfo.position.y.toFixed(2)}</div>
+              <div>Z: {debugInfo.position.z.toFixed(2)}</div>
+              <div>Chunks: {debugInfo.chunkCount}</div>
+              {debugInfo.blockLookingAt && (
+                <div>Looking at: {debugInfo.blockLookingAt.type}</div>
+              )}
+            </div>
+            
+            {/* Chat window */}
+            {showChat && (
+              <div className="chat-window">
+                <div className="chat-messages">
+                  {chat.slice(-10).map((msg, index) => (
+                    <div key={index} className="chat-message">
+                      <span className="chat-sender">{msg.sender}: </span>
+                      {msg.message}
+                    </div>
+                  ))}
+                </div>
+                <form className="chat-input-form" onSubmit={sendChatMessage}>
+                  <input
+                    type="text"
+                    className="chat-input"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    autoFocus
+                    placeholder="Type a message..."
+                  />
+                </form>
+              </div>
+            )}
+            
+            {/* Controls help */}
+            <div className="controls-help">
+              <div>WASD: Move</div>
+              <div>SPACE: Jump</div>
+              <div>Left Click: Break block</div>
+              <div>Right Click: Place block</div>
+              <div>1-9: Select block</div>
+              <div>T: Chat</div>
+            </div>
           </div>
-        )}
-        
-        {/* Controls help */}
-        <div className="controls-help">
-          <div>WASD: Move</div>
-          <div>SPACE: Jump</div>
-          <div>Left Click: Break block</div>
-          <div>Right Click: Place block</div>
-          <div>1-9: Select block</div>
-          <div>T: Chat</div>
-        </div>
-      </div>
-      
-      <button className="exit-button" onClick={onExit}>
-        Exit Game
-      </button>
+          
+          <button className="exit-button" onClick={onExit}>
+            Exit Game
+          </button>
+        </>
+      )}
     </div>
   );
 };

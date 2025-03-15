@@ -24,148 +24,62 @@
 ## Frontend Core Components
 
 ### Rendering Engine
-- [ ] Implement basic Three.js scene setup
-  - [ ] Configure renderer with WebGL2
-  - [ ] Set up camera and basic controls
-  - [ ] Implement resizable canvas with proper aspect ratio
-- [ ] Create shader programs
-  - [ ] Vertex shader for block geometry
-  - [ ] Fragment shader for texturing
-  - [ ] Special shaders for water, glass, and other effects
-  - [ ] Implement custom GLSL for performance-critical operations
-- [ ] Design and implement chunk management system
-  - [ ] Define chunk data structure (16x16x16)
-  - [ ] Implement chunk meshing algorithm
-  - [ ] Optimize with greedy meshing for similar blocks
-  - [ ] Create chunk loading/unloading strategy based on distance
-- [ ] Implement frustum culling
-  - [ ] Compute view frustum in world space
-  - [ ] Implement efficient chunk-frustum intersection tests
-  - [ ] Add occlusion culling for hidden chunks
-- [ ] Design and implement texture atlas system
-  - [ ] Create texture packer for optimal UV mapping
-  - [ ] Implement mipmapping for distant textures
-  - [ ] Create normal maps for enhanced lighting
-- [ ] Implement lighting system
-  - [ ] Global directional light (sun/moon)
-  - [ ] Ambient occlusion for block corners
-  - [ ] Dynamic lighting for torches and other light sources
-  - [ ] Implement shadow mapping for the sun
-- [ ] Implement special effects
-  - [ ] Particle system for block breaking
-  - [ ] Cloud rendering
-  - [ ] Water surface animation and reflections
-  - [ ] Fog system with distance-based density
+- [x] Initialize frontend project with node.js and Three.js
+- [x] Set up basic project structure
+- [x] Implement basic rendering engine using Three.js
+- [x] Create a simple 3D world with a ground plane
+- [x] Implement a basic camera system with first-person controls
+- [x] Add basic lighting and shadows
+- [x] Implement block data structure
+- [x] Create basic block rendering
+- [x] Implement chunk-based world system
+- [ ] Add texture mapping for different block types
+- [x] Implement basic collision detection
+- [x] Handle window resizing and fullscreen mode
+- [x] Implement day/night cycle
 
 ### User Interface
-- [ ] Design UI component system
-  - [ ] Create reusable UI components with HTML/CSS
-  - [ ] Implement game-specific styling
-  - [ ] Ensure responsive design for different screen sizes
-- [ ] Implement HUD elements
-  - [ ] Health bar with hearts
-  - [ ] Hunger bar with drumsticks
-  - [ ] Experience bar with level indicator
-  - [ ] Hotbar with 9 slots and selection indicator
-  - [ ] Crosshair
-  - [ ] Debug overlay with FPS, coordinates, etc.
-- [ ] Create menu screens
-  - [ ] Main menu with logo and background
-  - [ ] Settings menu with graphics, audio, and control options
-  - [ ] Pause menu
-  - [ ] Death screen
-  - [ ] Server browser/connection screen
-- [ ] Implement inventory system
-  - [ ] 3x9 grid inventory UI
-  - [ ] Drag and drop functionality
-  - [ ] Item stacking logic
-  - [ ] Hotbar synchronization
+- [x] Design and implement HUD (health, inventory, crosshair)
+- [x] Create main menu screen
+- [x] Implement inventory system
+- [x] Add basic chat functionality
+- [ ] Design and implement settings menu
+- [ ] Add debug overlay with FPS, coordinates, etc.
+- [x] Implement hotbar selection
 
 ### Controls and Player Interaction
-- [ ] Implement keyboard controls
-  - [ ] WASD movement
-  - [ ] Space for jump
-  - [ ] Shift for sneak
-  - [ ] Sprint functionality
-  - [ ] Flight mode toggle
-  - [ ] Customizable keybindings
-- [ ] Implement mouse controls
-  - [ ] Camera rotation
-  - [ ] Block breaking (left click)
-  - [ ] Block placing (right click)
-  - [ ] Mouse sensitivity settings
-  - [ ] Invert Y-axis option
-- [ ] Create interaction system
-  - [ ] Raycast-based block selection
-  - [ ] Block highlighting shader
-  - [ ] Maximum interaction distance logic
-  - [ ] Tool type and mining speed calculations
-- [ ] Implement pointer lock for immersive gameplay
-  - [ ] Request pointer lock on game start
-  - [ ] Handle pointer lock changes
-  - [ ] Display instructions for first-time users
+- [x] Implement WASD movement
+- [x] Add jumping and gravity
+- [x] Enable block placement with right-click
+- [x] Enable block destruction with left-click
+- [ ] Add block selection with mouse wheel
+- [ ] Implement sneaking with Shift
+- [ ] Add flying mode for creative play
+- [ ] Implement block highlighting for selection
 
 ### Physics System
-- [ ] Design and implement collision detection
-  - [ ] AABB collision for player-block interaction
-  - [ ] Implement sliding against surfaces
-  - [ ] Handle edge cases like corners and seams
-- [ ] Implement gravity and jumping
-  - [ ] Apply constant gravity force
-  - [ ] Jump mechanics with variable height
-  - [ ] Fall damage calculation
-- [ ] Create fluid physics
-  - [ ] Water movement slowdown
-  - [ ] Swimming mechanics
-  - [ ] Buoyancy and floating
-  - [ ] Drowning mechanic with air meter
-- [ ] Implement block physics
-  - [ ] Sand/gravel falling
-  - [ ] Basic water flow simulation
-  - [ ] Support dependency (e.g., torches falling if block removed)
+- [x] Implement basic gravity
+- [x] Add collision detection with blocks
+- [ ] Create fluid physics for water
+- [ ] Add falling blocks (sand, gravel)
+- [ ] Implement player physics (jumping, falling)
+- [ ] Add buoyancy in water
 
 ### Audio System
-- [ ] Design audio manager
-  - [ ] Implement Web Audio API integration
-  - [ ] Audio resource loading and caching
-  - [ ] 3D positional audio for spatial effects
-  - [ ] Volume controls and muting
-- [ ] Implement sound effects
-  - [ ] Block breaking sounds by material
-  - [ ] Block placing sounds
-  - [ ] Footstep sounds by block type
-  - [ ] Jump and fall sounds
-  - [ ] UI interaction sounds
-- [ ] Create ambient sound system
-  - [ ] Day/night cycle ambient sounds
-  - [ ] Biome-specific ambient sounds
-  - [ ] Cave sounds based on depth
-  - [ ] Weather sounds (rain, thunder)
-- [ ] Implement music system
-  - [ ] Background music playlist
-  - [ ] Music transitions based on game state
-  - [ ] Intensity variation for different scenarios
+- [ ] Implement background music
+- [ ] Add sound effects for block breaking/placing
+- [ ] Create footstep sounds based on block type
+- [ ] Add ambient sounds (wind, water)
+- [ ] Implement spatial audio for distance-based sounds
 
 ### Networking (Frontend Side)
-- [ ] Implement WebSocket connection
-  - [ ] Connection establishment and handshake
-  - [ ] Automatic reconnection with exponential backoff
-  - [ ] Connection status indicators
-  - [ ] Ping measurement and display
-- [ ] Design client-side prediction
-  - [ ] Predict player movement locally
-  - [ ] Handle server reconciliation
-  - [ ] Smooth correction for discrepancies
-  - [ ] Input buffering for latency hiding
-- [ ] Implement entity interpolation
-  - [ ] Position and rotation interpolation
-  - [ ] Animation blending for smooth transitions
-  - [ ] Extrapolation for packet loss scenarios
-- [ ] Create chunk synchronization
-  - [ ] Request chunks based on player position
-  - [ ] Implement chunk caching
-  - [ ] Prioritize visible chunks
-  - [ ] Handle chunk updates efficiently
+- [x] Set up WebSocket connection to server
+- [x] Implement player position synchronization
+- [x] Add chat message sending/receiving
+- [x] Synchronize block updates between clients
+- [ ] Handle server disconnections gracefully
+- [ ] Add player list and display other players
+- [ ] Implement latency compensation
 
 ## Backend Core Components
 
