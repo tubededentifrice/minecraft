@@ -4,7 +4,7 @@
   "private": true,
   "description": "Frontend for a Minecraft clone game",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --no-open",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx",
