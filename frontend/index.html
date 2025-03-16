@@ -2,11 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Minecraft Clone</title>
     <meta name="description" content="A browser-based Minecraft clone built with Three.js and Rust" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧱</text></svg>" />
     <meta name="theme-color" content="#4CAF50" />
+    <style>
+      /* Critical rendering CSS */
+      html, body, #root {
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        position: relative;
+      }
+      
+      canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      
+      * {
+        box-sizing: border-box;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

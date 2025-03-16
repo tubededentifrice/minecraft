@@ -105,6 +105,32 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
   const animationFrameIdRef = useRef<number>(0);
   const fpsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Add global styles to ensure full-screen rendering
+  useEffect(() => {
+    // Ensure body and html are full-screen
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    document.body.style.width = '100vw';
+    document.body.style.height = '100vh';
+    
+    document.documentElement.style.margin = '0';
+    document.documentElement.style.padding = '0';
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.width = '100vw';
+    document.documentElement.style.height = '100vh';
+    
+    // Ensure the game canvas displays properly
+    const meta = document.createElement('meta');
+    meta.name = 'viewport';
+    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+    document.head.appendChild(meta);
+    
+    return () => {
+      document.head.removeChild(meta);
+    };
+  }, []);
+
   // Memoized functions for better performance
   const updateDebugInfo = useCallback((
     fps: number, 

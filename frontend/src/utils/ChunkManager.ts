@@ -4,10 +4,14 @@ import TextureManager from './TextureManager';
 
 // Constants for chunk size and management
 const CHUNK_SIZE = 16;
-const RENDER_DISTANCE = 2; // Further reduced for better performance
+const RENDER_DISTANCE = 2; // Keep small render distance for performance
 const MAX_VISIBLE_CHUNKS = 25; // Limit maximum number of visible chunks
-const MAX_BLOCKS_PER_FRAME = 50; // Limit number of blocks created per frame
-const MAX_HEIGHT = 20; // Limit world height for better performance
+const MAX_BLOCKS_PER_FRAME = 100; // Increased to allow more blocks per frame
+const MAX_HEIGHT = 30; // Increased max height to avoid seeing through the ground
+
+// Terrain generation parameters
+const STEP_SIZE = 1; // Smaller step size to create more blocks
+const FILL_GROUND = true; // Flag to create solid ground blocks
 
 // Cache for block geometries and materials
 const geometryCache = new THREE.BoxGeometry(1, 1, 1);
@@ -376,12 +380,14 @@ class ChunkManager {
     const chunkX = chunk.position.x * CHUNK_SIZE;
     const chunkZ = chunk.position.y * CHUNK_SIZE;
     
-    // Simplified terrain generation: use lower resolution terrain to reduce calculations
-    // Only generate every other block for better performance
-    const stepSize = 2;
+    // Use a less aggressive step size for terrain, but still optimized
+    const stepSize = STEP_SIZE;
     
-    for (let x = 0; x < CHUNK_SIZE; x += stepSize) {
-      for (let z = 0; z < CHUNK_SIZE; z += stepSize) {
+    // First pass: generate heightmap for the entire chunk
+    const heightMap: number[][] = [];
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      heightMap[x] = [];
+      for (let z = 0; z < CHUNK_SIZE; z++) {
         const worldX = chunkX + x;
         const worldZ = chunkZ + z;
         
@@ -389,13 +395,27 @@ class ChunkManager {
         const rawHeight = this.noiseGenerator.getTerrainHeight(worldX, worldZ);
         const height = Math.min(rawHeight, MAX_HEIGHT);
         
+        heightMap[x][z] = height;
+        
         // Update chunk's highest point
         chunk.highestBlock = Math.max(chunk.highestBlock, height);
+      }
+    }
+    
+    // Generate terrain using the heightmap
+    for (let x = 0; x < CHUNK_SIZE; x += stepSize) {
+      for (let z = 0; z < CHUNK_SIZE; z += stepSize) {
+        const worldX = chunkX + x;
+        const worldZ = chunkZ + z;
         
-        // Only generate surface blocks and a few blocks below (instead of full column)
-        const startY = Math.max(0, height - 3);
+        // Get the height for this position
+        const height = heightMap[x][z];
         
-        for (let y = startY; y <= height; y++) {
+        // Minimum depth to generate blocks below surface
+        const minDepth = FILL_GROUND ? height : Math.max(0, height - 3);
+        
+        // Create blocks from minDepth to the surface
+        for (let y = minDepth; y <= height; y++) {
           // Skip if we've created too many blocks this frame
           if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) {
             continue;
@@ -403,7 +423,7 @@ class ChunkManager {
           
           let blockType = 'STONE';
           
-          // Determine block type based on height
+          // Determine block type based on height and depth
           if (y === height && y > 0) {
             if (height > 12) {
               blockType = 'STONE'; // Mountain tops
@@ -418,7 +438,7 @@ class ChunkManager {
             blockType = 'DIRT'; // Dirt under grass
           }
           
-          // Water in very low areas - skip for performance
+          // Water in very low areas
           if (y <= 3 && height <= 3 && y === height) {
             blockType = 'WATER';
           }
@@ -426,23 +446,39 @@ class ChunkManager {
           // Fill in blocks for this step size
           for (let fillX = 0; fillX < stepSize && x + fillX < CHUNK_SIZE; fillX++) {
             for (let fillZ = 0; fillZ < stepSize && z + fillZ < CHUNK_SIZE; fillZ++) {
-              // Only create actual block for edges and the actual position
-              if ((fillX === 0 || fillZ === 0 || fillX === stepSize - 1 || fillZ === stepSize - 1) && 
-                  y === height) {
+              // Always create the top block, but be selective about blocks below
+              const isTopBlock = y === height;
+              const isEdgeBlock = fillX === 0 || fillZ === 0 || 
+                                 fillX === stepSize - 1 || fillZ === stepSize - 1;
+              
+              if (isTopBlock || (FILL_GROUND && (y % 3 === 0 || isEdgeBlock))) {
                 this.createBlock(chunkX + x + fillX, y, chunkZ + z + fillZ, blockType, chunk);
                 this.blockCreationTracker.count++;
               }
             }
           }
         }
+        
+        // Floor at y=0 to prevent falling through the world
+        if (height < 1) {
+          this.createBlock(worldX, 0, worldZ, 'STONE', chunk);
+          this.blockCreationTracker.count++;
+        }
       }
     }
     
     // Only add trees in medium density chunks
-    if (Math.random() < 0.1 && chunk.blockCount < 100) { // Much lower chance for a tree
+    if (Math.random() < 0.1 && chunk.blockCount < 150) { // Slightly higher tree chance
       const treeX = chunkX + Math.floor(Math.random() * CHUNK_SIZE);
       const treeZ = chunkZ + Math.floor(Math.random() * CHUNK_SIZE);
-      const groundHeight = Math.min(this.noiseGenerator.getTerrainHeight(treeX, treeZ), MAX_HEIGHT);
+      const treePos = Math.floor(treeX - chunkX);
+      const treePosZ = Math.floor(treeZ - chunkZ);
+      
+      // Use heightmap if available
+      const groundHeight = treePos >= 0 && treePos < CHUNK_SIZE && 
+                          treePosZ >= 0 && treePosZ < CHUNK_SIZE ?
+                          heightMap[treePos][treePosZ] :
+                          Math.min(this.noiseGenerator.getTerrainHeight(treeX, treeZ), MAX_HEIGHT);
       
       // Only place trees on grass
       const surfaceBlockKey = this.getBlockKey(treeX, groundHeight, treeZ);
