@@ -7,11 +7,16 @@ const CHUNK_SIZE = 16;
 const RENDER_DISTANCE = 2; // Keep small render distance for performance
 const MAX_VISIBLE_CHUNKS = 25; // Limit maximum number of visible chunks
 const MAX_BLOCKS_PER_FRAME = 100; // Increased to allow more blocks per frame
-const MAX_HEIGHT = 30; // Increased max height to avoid seeing through the ground
+const MAX_HEIGHT = 40; // Increased max height for taller mountains
 
 // Terrain generation parameters
 const STEP_SIZE = 1; // Smaller step size to create more blocks
 const FILL_GROUND = true; // Flag to create solid ground blocks
+const TREE_DENSITY = 0.2; // Chance of tree generation
+const WATER_LEVEL = 4; // Default water level
+const MOUNTAIN_THRESHOLD = 0.7; // Threshold for mountain generation
+const RIVER_WIDTH = 2; // Width of rivers
+const RIVER_DEPTH = 2; // Depth of rivers below surrounding terrain
 
 // Cache for block geometries and materials
 const geometryCache = new THREE.BoxGeometry(1, 1, 1);
@@ -20,6 +25,27 @@ const materialCache = new Map<string, THREE.Material>();
 // Instance mesh for common blocks
 const INSTANCED_BLOCK_TYPES = ['DIRT', 'STONE', 'GRASS'];
 const instanceMeshes = new Map<string, THREE.InstancedMesh>();
+
+// Define tree types
+const TREE_TYPES = [
+  { 
+    name: 'oak', 
+    trunkHeight: 4,
+    leavesRadius: 2
+  },
+  { 
+    name: 'pine',
+    trunkHeight: 6,
+    leavesRadius: 1,
+    conical: true
+  },
+  { 
+    name: 'bush',
+    trunkHeight: 1,
+    leavesRadius: 2,
+    dense: true
+  }
+];
 
 // Define block interface
 interface Block {
@@ -385,14 +411,72 @@ class ChunkManager {
     
     // First pass: generate heightmap for the entire chunk
     const heightMap: number[][] = [];
+    let hasRiver = false;
+    let riverX = -1;
+    let riverZ = -1;
+    let riverDirection = 0; // 0: X-axis, 1: Z-axis
+    let hasLake = false;
+    let lakeX = -1;
+    let lakeZ = -1;
+    let lakeRadius = 0;
+    
+    // Decide if this chunk has a river
+    if (Math.random() < 0.15) {
+      hasRiver = true;
+      riverDirection = Math.random() > 0.5 ? 0 : 1;
+      if (riverDirection === 0) {
+        riverX = Math.floor(Math.random() * CHUNK_SIZE);
+      } else {
+        riverZ = Math.floor(Math.random() * CHUNK_SIZE);
+      }
+    }
+    
+    // Decide if this chunk has a lake
+    if (Math.random() < 0.1 && !hasRiver) {
+      hasLake = true;
+      lakeX = Math.floor(CHUNK_SIZE / 2 + (Math.random() * 6) - 3);
+      lakeZ = Math.floor(CHUNK_SIZE / 2 + (Math.random() * 6) - 3);
+      lakeRadius = 3 + Math.floor(Math.random() * 3);
+    }
+    
     for (let x = 0; x < CHUNK_SIZE; x++) {
       heightMap[x] = [];
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const worldX = chunkX + x;
         const worldZ = chunkZ + z;
         
-        // Get height at this position - clamp at MAX_HEIGHT
-        const rawHeight = this.noiseGenerator.getTerrainHeight(worldX, worldZ);
+        // Get base noise value to determine terrain type
+        const terrainType = this.noiseGenerator.fractalNoise(worldX * 0.01, worldZ * 0.01, 0, 2, 0.5);
+        
+        // Get height at this position
+        let rawHeight = this.noiseGenerator.getTerrainHeight(worldX, worldZ);
+        
+        // Apply mountain generation for certain areas
+        if (terrainType > MOUNTAIN_THRESHOLD) {
+          const mountainFactor = (terrainType - MOUNTAIN_THRESHOLD) / (1 - MOUNTAIN_THRESHOLD);
+          rawHeight += mountainFactor * 15; // Add up to 15 blocks of extra height
+        }
+        
+        // Apply river if needed
+        if (hasRiver) {
+          if (riverDirection === 0 && Math.abs(x - riverX) < RIVER_WIDTH) {
+            rawHeight = Math.max(WATER_LEVEL - RIVER_DEPTH, rawHeight - 6);
+          } else if (riverDirection === 1 && Math.abs(z - riverZ) < RIVER_WIDTH) {
+            rawHeight = Math.max(WATER_LEVEL - RIVER_DEPTH, rawHeight - 6);
+          }
+        }
+        
+        // Apply lake if needed
+        if (hasLake) {
+          const distToLake = Math.sqrt(Math.pow(x - lakeX, 2) + Math.pow(z - lakeZ, 2));
+          if (distToLake < lakeRadius) {
+            // More depth in the center, less on edges
+            const depthFactor = 1 - (distToLake / lakeRadius);
+            rawHeight = Math.max(WATER_LEVEL - RIVER_DEPTH, rawHeight - (5 * depthFactor));
+          }
+        }
+        
+        // Clamp height to max
         const height = Math.min(rawHeight, MAX_HEIGHT);
         
         heightMap[x][z] = height;
@@ -412,7 +496,7 @@ class ChunkManager {
         const height = heightMap[x][z];
         
         // Minimum depth to generate blocks below surface
-        const minDepth = FILL_GROUND ? height : Math.max(0, height - 3);
+        const minDepth = FILL_GROUND ? Math.max(0, height - 12) : Math.max(0, height - 3);
         
         // Create blocks from minDepth to the surface
         for (let y = minDepth; y <= height; y++) {
@@ -425,21 +509,27 @@ class ChunkManager {
           
           // Determine block type based on height and depth
           if (y === height && y > 0) {
-            if (height > 12) {
+            if (height >= WATER_LEVEL + 15) {
               blockType = 'STONE'; // Mountain tops
-            } else if (height > 5) {
+            } else if (height >= WATER_LEVEL + 8) {
+              // 20% chance of stone patches on high terrain
+              blockType = Math.random() < 0.2 ? 'STONE' : 'GRASS';
+            } else if (height > WATER_LEVEL) {
               blockType = 'GRASS'; // Normal terrain
-            } else if (height > 3) {
-              blockType = 'DIRT'; // Low areas
-            } else {
+            } else if (height > WATER_LEVEL - 2) {
               blockType = 'SAND'; // Beach areas
+            } else {
+              // Underwater surfaces
+              blockType = Math.random() < 0.7 ? 'SAND' : 'DIRT';
             }
-          } else if (y >= height - 2 && y < height && height > 1) {
+          } else if (y >= height - 3 && y < height && height > WATER_LEVEL) {
             blockType = 'DIRT'; // Dirt under grass
+          } else if (y >= height - 2 && y < height && height <= WATER_LEVEL) {
+            blockType = Math.random() < 0.8 ? 'SAND' : 'DIRT'; // Sand/dirt underwater
           }
           
-          // Water in very low areas
-          if (y <= 3 && height <= 3 && y === height) {
+          // Water in low areas
+          if (y <= WATER_LEVEL && height < WATER_LEVEL && y >= height) {
             blockType = 'WATER';
           }
           
@@ -448,10 +538,11 @@ class ChunkManager {
             for (let fillZ = 0; fillZ < stepSize && z + fillZ < CHUNK_SIZE; fillZ++) {
               // Always create the top block, but be selective about blocks below
               const isTopBlock = y === height;
+              const isWaterBlock = blockType === 'WATER';
               const isEdgeBlock = fillX === 0 || fillZ === 0 || 
                                  fillX === stepSize - 1 || fillZ === stepSize - 1;
               
-              if (isTopBlock || (FILL_GROUND && (y % 3 === 0 || isEdgeBlock))) {
+              if (isTopBlock || isWaterBlock || (FILL_GROUND && (y % 4 === 0 || isEdgeBlock || height - y < 3))) {
                 this.createBlock(chunkX + x + fillX, y, chunkZ + z + fillZ, blockType, chunk);
                 this.blockCreationTracker.count++;
               }
@@ -467,34 +558,40 @@ class ChunkManager {
       }
     }
     
-    // Only add trees in medium density chunks
-    if (Math.random() < 0.1 && chunk.blockCount < 150) { // Slightly higher tree chance
-      const treeX = chunkX + Math.floor(Math.random() * CHUNK_SIZE);
-      const treeZ = chunkZ + Math.floor(Math.random() * CHUNK_SIZE);
-      const treePos = Math.floor(treeX - chunkX);
-      const treePosZ = Math.floor(treeZ - chunkZ);
+    // Add trees based on terrain type
+    if (Math.random() < TREE_DENSITY) {
+      const numberOfTrees = Math.floor(Math.random() * 3) + 1; // 1-3 trees per chunk
       
-      // Use heightmap if available
-      const groundHeight = treePos >= 0 && treePos < CHUNK_SIZE && 
-                          treePosZ >= 0 && treePosZ < CHUNK_SIZE ?
-                          heightMap[treePos][treePosZ] :
-                          Math.min(this.noiseGenerator.getTerrainHeight(treeX, treeZ), MAX_HEIGHT);
-      
-      // Only place trees on grass
-      const surfaceBlockKey = this.getBlockKey(treeX, groundHeight, treeZ);
-      const surfaceBlock = chunk.blocks.get(surfaceBlockKey);
-      
-      if (surfaceBlock && surfaceBlock.type === 'GRASS' && groundHeight > 3) {
-        this.createSimpleTree(treeX, groundHeight + 1, treeZ, chunk);
+      for (let i = 0; i < numberOfTrees; i++) {
+        const treeX = chunkX + Math.floor(Math.random() * CHUNK_SIZE);
+        const treeZ = chunkZ + Math.floor(Math.random() * CHUNK_SIZE);
+        const treePos = Math.floor(treeX - chunkX);
+        const treePosZ = Math.floor(treeZ - chunkZ);
+        
+        // Use heightmap if available
+        const groundHeight = treePos >= 0 && treePos < CHUNK_SIZE && 
+                            treePosZ >= 0 && treePosZ < CHUNK_SIZE ?
+                            heightMap[treePos][treePosZ] :
+                            Math.min(this.noiseGenerator.getTerrainHeight(treeX, treeZ), MAX_HEIGHT);
+        
+        // Only place trees on grass and above water level
+        const surfaceBlockKey = this.getBlockKey(treeX, groundHeight, treeZ);
+        const surfaceBlock = chunk.blocks.get(surfaceBlockKey);
+        
+        if (surfaceBlock && surfaceBlock.type === 'GRASS' && groundHeight > WATER_LEVEL) {
+          // Select a random tree type
+          const treeType = TREE_TYPES[Math.floor(Math.random() * TREE_TYPES.length)];
+          this.createTree(treeX, groundHeight + 1, treeZ, chunk, treeType);
+        }
       }
     }
     
     chunk.isGenerated = true;
   }
   
-  // Create a simplified tree
-  private createSimpleTree(x: number, baseY: number, z: number, chunk: Chunk): void {
-    const trunkHeight = 3; // Shorter trees
+  // Create a tree based on tree type
+  private createTree(x: number, baseY: number, z: number, chunk: Chunk, treeType: any): void {
+    const { trunkHeight, leavesRadius, conical, dense } = treeType;
     
     // Create trunk
     for (let y = 0; y < trunkHeight; y++) {
@@ -504,33 +601,86 @@ class ChunkManager {
       }
     }
     
-    // Create a single layer of leaves
-    const leavesRadius = 1; // Smaller leaves
-    
-    for (let lx = -leavesRadius; lx <= leavesRadius; lx++) {
-      for (let lz = -leavesRadius; lz <= leavesRadius; lz++) {
-        if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) continue;
-        
-        // Skip trunk position
-        if (lx === 0 && lz === 0) continue;
-        
-        // Only place leaves at corners
-        if (Math.abs(lx) + Math.abs(lz) <= leavesRadius + 1) {
-          this.createBlock(
-            x + lx, 
-            baseY + trunkHeight, 
-            z + lz, 
-            'LEAVES', 
-            chunk
-          );
-          this.blockCreationTracker.count++;
+    // Determine leaves shape based on tree type
+    if (conical) {
+      // Pine tree with conical leaves
+      for (let y = 0; y < trunkHeight - 1; y++) {
+        const layerRadius = Math.max(0, leavesRadius - Math.floor(y / 2));
+        for (let lx = -layerRadius; lx <= layerRadius; lx++) {
+          for (let lz = -layerRadius; lz <= layerRadius; lz++) {
+            if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) continue;
+            
+            // Skip trunk position
+            if (lx === 0 && lz === 0) continue;
+            
+            // Create leaves in a circular/conical pattern
+            if (Math.abs(lx) + Math.abs(lz) <= layerRadius + 1) {
+              this.createBlock(
+                x + lx, 
+                baseY + trunkHeight - y, 
+                z + lz, 
+                'LEAVES', 
+                chunk
+              );
+              this.blockCreationTracker.count++;
+            }
+          }
+        }
+      }
+      
+      // Top leaf
+      this.createBlock(x, baseY + trunkHeight, z, 'LEAVES', chunk);
+      this.blockCreationTracker.count++;
+    } else if (dense) {
+      // Bush type with dense leaves
+      for (let y = 0; y < 2; y++) { // Two layers of leaves
+        for (let lx = -leavesRadius; lx <= leavesRadius; lx++) {
+          for (let lz = -leavesRadius; lz <= leavesRadius; lz++) {
+            if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) continue;
+            
+            // Skip trunk position except for top
+            if (y === 0 && lx === 0 && lz === 0) continue;
+            
+            // Create full spherical leaves
+            if (lx*lx + lz*lz <= leavesRadius*leavesRadius + 1) {
+              this.createBlock(
+                x + lx, 
+                baseY + y, 
+                z + lz, 
+                'LEAVES', 
+                chunk
+              );
+              this.blockCreationTracker.count++;
+            }
+          }
+        }
+      }
+    } else {
+      // Standard oak tree with layered leaves
+      for (let y = 0; y < 3; y++) { // Three layers of leaves
+        const layerRadius = y === 1 ? leavesRadius : leavesRadius - 1;
+        for (let lx = -layerRadius; lx <= layerRadius; lx++) {
+          for (let lz = -layerRadius; lz <= layerRadius; lz++) {
+            if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) continue;
+            
+            // Skip trunk position
+            if (y < 2 && lx === 0 && lz === 0) continue;
+            
+            // Create leaves in a circular pattern that's denser in the middle layer
+            if (lx*lx + lz*lz <= layerRadius*layerRadius + (y === 1 ? 1 : 0)) {
+              this.createBlock(
+                x + lx, 
+                baseY + trunkHeight - 2 + y, 
+                z + lz, 
+                'LEAVES', 
+                chunk
+              );
+              this.blockCreationTracker.count++;
+            }
+          }
         }
       }
     }
-    
-    // Add a top leaf
-    this.createBlock(x, baseY + trunkHeight + 1, z, 'LEAVES', chunk);
-    this.blockCreationTracker.count++;
   }
   
   // Create a block and add it to the chunk
