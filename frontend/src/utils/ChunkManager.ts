@@ -4,13 +4,25 @@ import TextureManager from './TextureManager';
 
 // Constants for chunk size and management
 const CHUNK_SIZE = 16;
-const RENDER_DISTANCE = 4;
+const RENDER_DISTANCE = 2; // Further reduced for better performance
+const MAX_VISIBLE_CHUNKS = 25; // Limit maximum number of visible chunks
+const MAX_BLOCKS_PER_FRAME = 50; // Limit number of blocks created per frame
+const MAX_HEIGHT = 20; // Limit world height for better performance
+
+// Cache for block geometries and materials
+const geometryCache = new THREE.BoxGeometry(1, 1, 1);
+const materialCache = new Map<string, THREE.Material>();
+
+// Instance mesh for common blocks
+const INSTANCED_BLOCK_TYPES = ['DIRT', 'STONE', 'GRASS'];
+const instanceMeshes = new Map<string, THREE.InstancedMesh>();
 
 // Define block interface
 interface Block {
   type: string;
   position: THREE.Vector3;
-  mesh?: THREE.Mesh;
+  mesh?: THREE.Mesh | number; // Mesh or index in instanced mesh
+  isInstanced?: boolean;
 }
 
 // Define chunk interface
@@ -18,7 +30,11 @@ interface Chunk {
   position: THREE.Vector2;
   blocks: Map<string, Block>;
   isGenerated: boolean;
+  isVisible: boolean;
   mesh?: THREE.Group;
+  blockCount: number;
+  highestBlock: number;
+  priority: number; // For prioritizing chunks near player
 }
 
 // Class to manage chunks and blocks
@@ -27,18 +43,45 @@ class ChunkManager {
   private noiseGenerator: NoiseGenerator;
   private scene: THREE.Scene;
   private textureManager: TextureManager;
-  private blockGeometry: THREE.BoxGeometry;
+  private visibleChunks: Set<string> = new Set();
+  private updateQueue: Array<{key: string, priority: number}> = [];
+  private isUpdating: boolean = false;
+  private lastPlayerChunk: {x: number, z: number} | null = null;
+  private blockCreationTracker = { count: 0, lastReset: 0 };
+  private raycaster: THREE.Raycaster;
+  private blockMatrix = new THREE.Matrix4();
+  private instanceCount = new Map<string, number>();
   
   constructor(scene: THREE.Scene) {
-    console.log('ChunkManager: Initializing');
+    console.log('ChunkManager: Initializing with performance optimizations');
     this.chunks = new Map();
     this.noiseGenerator = new NoiseGenerator(Math.random() * 10000);
     this.scene = scene;
     this.textureManager = TextureManager.getInstance();
+    this.raycaster = new THREE.Raycaster();
     
-    // Create a shared geometry for all blocks
-    this.blockGeometry = new THREE.BoxGeometry(1, 1, 1);
+    // Initialize instance meshes for common block types
+    this.initInstanceMeshes();
+    
     console.log('ChunkManager: Initialization complete');
+  }
+  
+  // Initialize instance meshes for common block types
+  private initInstanceMeshes(): void {
+    for (const type of INSTANCED_BLOCK_TYPES) {
+      const material = this.textureManager.getMaterialForBlock(type);
+      const instancedMesh = new THREE.InstancedMesh(
+        geometryCache,
+        material,
+        1000 // Maximum instances per mesh
+      );
+      instancedMesh.count = 0;
+      instancedMesh.castShadow = true;
+      instancedMesh.receiveShadow = true;
+      instanceMeshes.set(type, instancedMesh);
+      this.instanceCount.set(type, 0);
+      this.scene.add(instancedMesh);
+    }
   }
   
   // Get chunk key from position
@@ -48,58 +91,184 @@ class ChunkManager {
   
   // Get block key from position
   private getBlockKey(x: number, y: number, z: number): string {
-    return `${x},${y},${z}`;
+    return `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`;
   }
   
   // Get chunk count
   public getChunkCount(): number {
-    return this.chunks.size;
+    return this.visibleChunks.size;
   }
   
   // Initialize chunks around player
   public initChunks(playerPosition: THREE.Vector3): void {
     try {
-      console.log('ChunkManager: Initializing chunks around player position', playerPosition);
       const playerChunkX = Math.floor(playerPosition.x / CHUNK_SIZE);
       const playerChunkZ = Math.floor(playerPosition.z / CHUNK_SIZE);
       
-      // Generate chunks in render distance
-      // Start with just a few chunks first for faster initial loading
-      const initialDistance = 2; // Smaller initial render distance
-      console.log(`ChunkManager: Generating initial ${initialDistance}x${initialDistance} chunks`);
+      // Skip if player hasn't moved to a new chunk to reduce needless updates
+      if (this.lastPlayerChunk && 
+          this.lastPlayerChunk.x === playerChunkX && 
+          this.lastPlayerChunk.z === playerChunkZ) {
+        return;
+      }
       
-      for (let x = playerChunkX - initialDistance; x <= playerChunkX + initialDistance; x++) {
-        for (let z = playerChunkZ - initialDistance; z <= playerChunkZ + initialDistance; z++) {
-          this.getOrCreateChunk(x, z);
+      this.lastPlayerChunk = { x: playerChunkX, z: playerChunkZ };
+      
+      // Clear update queue and prioritize new chunks
+      this.updateQueue = [];
+      
+      const newVisibleChunks = new Set<string>();
+      const chunkDistances: Array<{key: string, distance: number, priority: number}> = [];
+      
+      // Calculate distances for all chunks in render distance
+      for (let x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
+        for (let z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
+          const chunkKey = `${x},${z}`;
+          const dx = x - playerChunkX;
+          const dz = z - playerChunkZ;
+          const distance = Math.sqrt(dx * dx + dz * dz);
+          
+          // Calculate priority - closer chunks get higher priority
+          const priority = 1000 - Math.floor(distance * 100);
+          
+          chunkDistances.push({ key: chunkKey, distance, priority });
         }
       }
       
-      // Schedule the rest of the chunks to be loaded asynchronously
-      setTimeout(() => {
-        console.log('ChunkManager: Loading remaining chunks in render distance');
-        for (let x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
-          for (let z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
-            // Skip already loaded chunks
-            if (Math.abs(x - playerChunkX) <= initialDistance && Math.abs(z - playerChunkZ) <= initialDistance) {
-              continue;
-            }
-            this.getOrCreateChunk(x, z);
+      // Sort by distance
+      chunkDistances.sort((a, b) => a.distance - b.distance);
+      
+      // Take only the closest chunks up to MAX_VISIBLE_CHUNKS
+      const visibleChunkData = chunkDistances.slice(0, MAX_VISIBLE_CHUNKS);
+      
+      // Add closest chunks to visible set and process them immediately
+      for (let i = 0; i < Math.min(5, visibleChunkData.length); i++) {
+        const { key } = visibleChunkData[i];
+        newVisibleChunks.add(key);
+        
+        const [x, z] = key.split(',').map(Number);
+        
+        if (!this.chunks.has(key)) {
+          this.getOrCreateChunk(x, z, visibleChunkData[i].priority);
+        } else {
+          const chunk = this.chunks.get(key);
+          if (chunk) {
+            chunk.priority = visibleChunkData[i].priority;
+            chunk.isVisible = true;
           }
         }
+      }
+      
+      // Queue the remaining chunks
+      for (let i = 5; i < visibleChunkData.length; i++) {
+        const { key, priority } = visibleChunkData[i];
+        newVisibleChunks.add(key);
         
-        // Unload chunks outside render distance
+        const chunk = this.chunks.get(key);
+        if (chunk) {
+          chunk.priority = priority;
+          chunk.isVisible = true;
+        } else {
+          this.updateQueue.push({ key, priority });
+        }
+      }
+      
+      // Update visibility of chunks
+      this.updateChunkVisibility(newVisibleChunks);
+      
+      // Process chunks in the update queue
+      if (!this.isUpdating) {
+        this.processUpdateQueue();
+      }
+      
+      // Unload distant chunks every 5 seconds
+      if (Math.random() < 0.02) {
         this.unloadDistantChunks(playerPosition);
-        console.log('ChunkManager: All chunks loaded, count:', this.chunks.size);
-      }, 1000); // Delay loading of additional chunks
+      }
     } catch (error) {
       console.error('ChunkManager: Error initializing chunks:', error);
       // Create at least one chunk to ensure something is visible
-      this.getOrCreateChunk(0, 0);
+      if (this.chunks.size === 0) {
+        this.getOrCreateChunk(0, 0, 1000);
+      }
     }
   }
   
+  // Process chunks in the update queue with strict batching
+  private processUpdateQueue(): void {
+    if (this.updateQueue.length === 0) {
+      this.isUpdating = false;
+      return;
+    }
+    
+    this.isUpdating = true;
+    
+    // Sort the queue by priority
+    this.updateQueue.sort((a, b) => b.priority - a.priority);
+    
+    const processBatch = () => {
+      // Reset block creation counter if needed
+      const now = performance.now();
+      if (now - this.blockCreationTracker.lastReset > 16) { // Reset every frame (~16ms)
+        this.blockCreationTracker.count = 0;
+        this.blockCreationTracker.lastReset = now;
+      }
+      
+      // Process one chunk
+      if (this.updateQueue.length > 0) {
+        const { key } = this.updateQueue.shift()!;
+        const [x, z] = key.split(',').map(Number);
+        
+        if (!this.chunks.has(key) && this.visibleChunks.has(key)) {
+          this.getOrCreateChunk(x, z, 0);
+        }
+      }
+      
+      // Continue processing if queue not empty and we're still well under budget
+      if (this.updateQueue.length > 0 && this.blockCreationTracker.count < MAX_BLOCKS_PER_FRAME) {
+        setTimeout(processBatch, 0);
+      } else if (this.updateQueue.length > 0) {
+        // Schedule next batch for next frame
+        requestAnimationFrame(processBatch);
+      } else {
+        this.isUpdating = false;
+      }
+    };
+    
+    processBatch();
+  }
+  
+  // Update chunk visibility with occlusion culling
+  private updateChunkVisibility(newVisibleChunks: Set<string>): void {
+    // Hide chunks that are no longer visible
+    for (const chunkKey of this.visibleChunks) {
+      if (!newVisibleChunks.has(chunkKey)) {
+        const chunk = this.chunks.get(chunkKey);
+        if (chunk) {
+          chunk.isVisible = false;
+          if (chunk.mesh) {
+            chunk.mesh.visible = false;
+          }
+        }
+      }
+    }
+    
+    // Show chunks that are now visible
+    for (const chunkKey of newVisibleChunks) {
+      const chunk = this.chunks.get(chunkKey);
+      if (chunk) {
+        chunk.isVisible = true;
+        if (chunk.mesh) {
+          chunk.mesh.visible = true;
+        }
+      }
+    }
+    
+    this.visibleChunks = newVisibleChunks;
+  }
+  
   // Get or create a chunk at specified coordinates
-  private getOrCreateChunk(chunkX: number, chunkZ: number): Chunk {
+  private getOrCreateChunk(chunkX: number, chunkZ: number, priority: number): Chunk {
     try {
       const chunkKey = `${chunkX},${chunkZ}`;
       
@@ -109,7 +278,11 @@ class ChunkManager {
           position: new THREE.Vector2(chunkX, chunkZ),
           blocks: new Map(),
           isGenerated: false,
-          mesh: new THREE.Group()
+          isVisible: true,
+          mesh: new THREE.Group(),
+          blockCount: 0,
+          highestBlock: 0,
+          priority
         };
         
         this.chunks.set(chunkKey, chunk);
@@ -131,10 +304,14 @@ class ChunkManager {
         position: new THREE.Vector2(chunkX, chunkZ),
         blocks: new Map(),
         isGenerated: true,
-        mesh: new THREE.Group()
+        isVisible: true,
+        mesh: new THREE.Group(),
+        blockCount: 0,
+        highestBlock: 0,
+        priority
       };
       
-      // Add a ground plane for the default chunk
+      // Add a simple ground plane for the default chunk
       const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x567D46 });
       const groundMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE),
@@ -166,36 +343,64 @@ class ChunkManager {
       const distX = Math.abs(chunk.position.x - playerChunkX);
       const distZ = Math.abs(chunk.position.y - playerChunkZ);
       
-      if (distX > RENDER_DISTANCE + 1 || distZ > RENDER_DISTANCE + 1) {
+      if (distX > RENDER_DISTANCE + 1 || distZ > RENDER_DISTANCE + 1 || !chunk.isVisible) {
         // Remove chunk from scene
         if (chunk.mesh) {
           this.scene.remove(chunk.mesh);
         }
         
+        // Remove blocks from instanced meshes
+        for (const block of chunk.blocks.values()) {
+          if (block.isInstanced && typeof block.mesh === 'number') {
+            // Set matrix to zero to effectively hide it
+            this.blockMatrix.makeScale(0, 0, 0);
+            const mesh = instanceMeshes.get(block.type);
+            if (mesh) {
+              mesh.setMatrixAt(block.mesh, this.blockMatrix);
+              mesh.instanceMatrix.needsUpdate = true;
+            }
+          }
+        }
+        
         // Remove chunk from map
         this.chunks.delete(key);
+        this.visibleChunks.delete(key);
       }
     }
   }
   
-  // Generate terrain for a chunk
+  // Generate terrain for a chunk with optimized mesh creation
   private generateTerrain(chunk: Chunk): void {
     if (chunk.isGenerated) return;
     
     const chunkX = chunk.position.x * CHUNK_SIZE;
     const chunkZ = chunk.position.y * CHUNK_SIZE;
     
-    // Generate blocks for terrain
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) {
+    // Simplified terrain generation: use lower resolution terrain to reduce calculations
+    // Only generate every other block for better performance
+    const stepSize = 2;
+    
+    for (let x = 0; x < CHUNK_SIZE; x += stepSize) {
+      for (let z = 0; z < CHUNK_SIZE; z += stepSize) {
         const worldX = chunkX + x;
         const worldZ = chunkZ + z;
         
-        // Get height at this position
-        const height = this.noiseGenerator.getTerrainHeight(worldX, worldZ);
+        // Get height at this position - clamp at MAX_HEIGHT
+        const rawHeight = this.noiseGenerator.getTerrainHeight(worldX, worldZ);
+        const height = Math.min(rawHeight, MAX_HEIGHT);
         
-        // Generate blocks from bedrock to surface
-        for (let y = 0; y <= height; y++) {
+        // Update chunk's highest point
+        chunk.highestBlock = Math.max(chunk.highestBlock, height);
+        
+        // Only generate surface blocks and a few blocks below (instead of full column)
+        const startY = Math.max(0, height - 3);
+        
+        for (let y = startY; y <= height; y++) {
+          // Skip if we've created too many blocks this frame
+          if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) {
+            continue;
+          }
+          
           let blockType = 'STONE';
           
           // Determine block type based on height
@@ -209,69 +414,87 @@ class ChunkManager {
             } else {
               blockType = 'SAND'; // Beach areas
             }
-          } else if (y >= height - 3 && y < height && height > 1) {
+          } else if (y >= height - 2 && y < height && height > 1) {
             blockType = 'DIRT'; // Dirt under grass
           }
           
-          // Water in very low areas
-          if (y <= 3 && height <= 3) {
+          // Water in very low areas - skip for performance
+          if (y <= 3 && height <= 3 && y === height) {
             blockType = 'WATER';
           }
           
-          // Create block and add to chunk
-          this.createBlock(worldX, y, worldZ, blockType, chunk);
+          // Fill in blocks for this step size
+          for (let fillX = 0; fillX < stepSize && x + fillX < CHUNK_SIZE; fillX++) {
+            for (let fillZ = 0; fillZ < stepSize && z + fillZ < CHUNK_SIZE; fillZ++) {
+              // Only create actual block for edges and the actual position
+              if ((fillX === 0 || fillZ === 0 || fillX === stepSize - 1 || fillZ === stepSize - 1) && 
+                  y === height) {
+                this.createBlock(chunkX + x + fillX, y, chunkZ + z + fillZ, blockType, chunk);
+                this.blockCreationTracker.count++;
+              }
+            }
+          }
         }
       }
     }
     
-    // Add some trees
-    if (Math.random() < 0.2) { // 20% chance for a tree in this chunk
+    // Only add trees in medium density chunks
+    if (Math.random() < 0.1 && chunk.blockCount < 100) { // Much lower chance for a tree
       const treeX = chunkX + Math.floor(Math.random() * CHUNK_SIZE);
       const treeZ = chunkZ + Math.floor(Math.random() * CHUNK_SIZE);
-      const groundHeight = this.noiseGenerator.getTerrainHeight(treeX, treeZ);
+      const groundHeight = Math.min(this.noiseGenerator.getTerrainHeight(treeX, treeZ), MAX_HEIGHT);
       
       // Only place trees on grass
       const surfaceBlockKey = this.getBlockKey(treeX, groundHeight, treeZ);
       const surfaceBlock = chunk.blocks.get(surfaceBlockKey);
       
       if (surfaceBlock && surfaceBlock.type === 'GRASS' && groundHeight > 3) {
-        this.createTree(treeX, groundHeight + 1, treeZ, chunk);
+        this.createSimpleTree(treeX, groundHeight + 1, treeZ, chunk);
       }
     }
     
     chunk.isGenerated = true;
   }
   
-  // Create a tree
-  private createTree(x: number, baseY: number, z: number, chunk: Chunk): void {
-    const trunkHeight = 4 + Math.floor(Math.random() * 2);
+  // Create a simplified tree
+  private createSimpleTree(x: number, baseY: number, z: number, chunk: Chunk): void {
+    const trunkHeight = 3; // Shorter trees
     
     // Create trunk
     for (let y = 0; y < trunkHeight; y++) {
-      this.createBlock(x, baseY + y, z, 'WOOD', chunk);
+      if (this.blockCreationTracker.count < MAX_BLOCKS_PER_FRAME) {
+        this.createBlock(x, baseY + y, z, 'WOOD', chunk);
+        this.blockCreationTracker.count++;
+      }
     }
     
-    // Create leaves
-    const leavesHeight = 3;
-    const leavesRadius = 2;
+    // Create a single layer of leaves
+    const leavesRadius = 1; // Smaller leaves
     
-    for (let y = 0; y < leavesHeight; y++) {
-      for (let lx = -leavesRadius; lx <= leavesRadius; lx++) {
-        for (let lz = -leavesRadius; lz <= leavesRadius; lz++) {
-          if (lx === 0 && lz === 0 && y < leavesHeight - 1) continue; // Skip trunk position
-          
-          if (lx * lx + lz * lz + y * y <= leavesRadius * leavesRadius + 1) {
-            this.createBlock(
-              x + lx, 
-              baseY + trunkHeight - 1 + y, 
-              z + lz, 
-              'LEAVES', 
-              chunk
-            );
-          }
+    for (let lx = -leavesRadius; lx <= leavesRadius; lx++) {
+      for (let lz = -leavesRadius; lz <= leavesRadius; lz++) {
+        if (this.blockCreationTracker.count >= MAX_BLOCKS_PER_FRAME) continue;
+        
+        // Skip trunk position
+        if (lx === 0 && lz === 0) continue;
+        
+        // Only place leaves at corners
+        if (Math.abs(lx) + Math.abs(lz) <= leavesRadius + 1) {
+          this.createBlock(
+            x + lx, 
+            baseY + trunkHeight, 
+            z + lz, 
+            'LEAVES', 
+            chunk
+          );
+          this.blockCreationTracker.count++;
         }
       }
     }
+    
+    // Add a top leaf
+    this.createBlock(x, baseY + trunkHeight + 1, z, 'LEAVES', chunk);
+    this.blockCreationTracker.count++;
   }
   
   // Create a block and add it to the chunk
@@ -294,29 +517,82 @@ class ChunkManager {
       return;
     }
     
-    // Create material for block
-    const material = this.textureManager.getMaterialForBlock(type);
+    let mesh: THREE.Mesh | number;
+    let isInstanced = false;
     
-    // Create mesh
-    const mesh = new THREE.Mesh(this.blockGeometry, material);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    
-    // Add to chunk mesh
-    if (chunk.mesh) {
-      chunk.mesh.add(mesh);
+    // Use instanced meshes for common block types
+    if (INSTANCED_BLOCK_TYPES.includes(type)) {
+      const instancedMesh = instanceMeshes.get(type);
+      if (instancedMesh) {
+        const instanceId = this.instanceCount.get(type) || 0;
+        
+        if (instanceId < instancedMesh.count) {
+          this.blockMatrix.makeTranslation(x, y, z);
+          instancedMesh.setMatrixAt(instanceId, this.blockMatrix);
+          instancedMesh.instanceMatrix.needsUpdate = true;
+          
+          this.instanceCount.set(type, instanceId + 1);
+          mesh = instanceId;
+          isInstanced = true;
+        } else {
+          // Fallback to regular mesh if we exceed instance count
+          const material = this.textureManager.getMaterialForBlock(type);
+          mesh = new THREE.Mesh(geometryCache, material);
+          mesh.position.set(x, y, z);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          
+          // Add to chunk mesh
+          if (chunk.mesh) {
+            chunk.mesh.add(mesh);
+          }
+        }
+      } else {
+        // Fallback if instance mesh not found
+        const material = this.textureManager.getMaterialForBlock(type);
+        mesh = new THREE.Mesh(geometryCache, material);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        
+        // Add to chunk mesh
+        if (chunk.mesh) {
+          chunk.mesh.add(mesh);
+        }
+      }
+    } else {
+      // Use cached materials when possible
+      let material: THREE.Material;
+      if (materialCache.has(type)) {
+        material = materialCache.get(type)!;
+      } else {
+        material = this.textureManager.getMaterialForBlock(type);
+        materialCache.set(type, material);
+      }
+      
+      // Create regular mesh
+      mesh = new THREE.Mesh(geometryCache, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      
+      // Add to chunk mesh
+      if (chunk.mesh) {
+        chunk.mesh.add(mesh);
+      }
     }
     
     // Store block data
     const block: Block = {
       type,
       position: new THREE.Vector3(x, y, z),
-      mesh
+      mesh,
+      isInstanced
     };
     
     // Add to chunk
     chunk.blocks.set(blockKey, block);
+    chunk.blockCount++;
   }
   
   // Place a block at the specified position
@@ -350,14 +626,24 @@ class ChunkManager {
     
     if (!block) return null;
     
-    // Remove from scene
-    if (block.mesh && chunk.mesh) {
+    // Remove the block
+    if (block.isInstanced && typeof block.mesh === 'number') {
+      // For instanced blocks, set scale to 0 to hide it
+      const instancedMesh = instanceMeshes.get(block.type);
+      if (instancedMesh) {
+        this.blockMatrix.makeScale(0, 0, 0);
+        instancedMesh.setMatrixAt(block.mesh, this.blockMatrix);
+        instancedMesh.instanceMatrix.needsUpdate = true;
+      }
+    } else if (block.mesh instanceof THREE.Mesh && chunk.mesh) {
+      // For regular meshes, remove from scene
       chunk.mesh.remove(block.mesh);
     }
     
     // Remove from chunk
     const blockType = block.type;
     chunk.blocks.delete(blockKey);
+    chunk.blockCount--;
     
     return blockType;
   }
@@ -373,36 +659,72 @@ class ChunkManager {
     return chunk.blocks.get(blockKey) || null;
   }
   
-  // Cast ray and return the block that was hit
+  // Optimized ray casting that only checks visible chunks
   public castRay(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance: number = 5): { block: Block, face: THREE.Face | null } | null {
     try {
-      const raycaster = new THREE.Raycaster(origin, direction.normalize(), 0, maxDistance);
-      const meshes: THREE.Mesh[] = [];
+      this.raycaster.set(origin, direction.normalize());
+      this.raycaster.far = maxDistance;
       
-      // Collect all block meshes in all chunks
-      for (const chunk of this.chunks.values()) {
-        for (const block of chunk.blocks.values()) {
-          if (block.mesh) {
-            meshes.push(block.mesh);
+      // Collect visible meshes from regular blocks
+      const meshes: THREE.Mesh[] = [];
+      const blockLookup = new Map<THREE.Mesh, Block>();
+      
+      // Only check chunks that are close to the ray
+      const originChunkKey = this.getChunkKey(origin.x, origin.z);
+      const originChunk = this.chunks.get(originChunkKey);
+      
+      if (!originChunk) return null;
+      
+      // Collect regular meshes and create lookup
+      for (const chunkKey of this.visibleChunks) {
+        const chunk = this.chunks.get(chunkKey);
+        if (chunk && chunk.isVisible) {
+          for (const block of chunk.blocks.values()) {
+            if (!block.isInstanced && block.mesh instanceof THREE.Mesh) {
+              meshes.push(block.mesh);
+              blockLookup.set(block.mesh, block);
+            }
           }
         }
       }
       
-      // Cast ray
-      const intersects = raycaster.intersectObjects(meshes, false);
+      // Cast ray against regular meshes
+      const intersects = this.raycaster.intersectObjects(meshes, false);
       
       if (intersects.length > 0) {
         const intersect = intersects[0];
         const mesh = intersect.object as THREE.Mesh;
+        const block = blockLookup.get(mesh);
         
-        // Find the block that owns this mesh
-        for (const chunk of this.chunks.values()) {
-          for (const [key, block] of chunk.blocks.entries()) {
-            if (block.mesh === mesh) {
-              return { 
-                block, 
-                face: intersect.face || null 
-              };
+        if (block) {
+          return { 
+            block, 
+            face: intersect.face || null 
+          };
+        }
+      }
+      
+      // Check instanced meshes
+      for (const [type, instancedMesh] of instanceMeshes) {
+        const instanceIntersects = this.raycaster.intersectObject(instancedMesh, false);
+        
+        if (instanceIntersects.length > 0) {
+          const intersect = instanceIntersects[0];
+          const instanceId = intersect.instanceId;
+          
+          if (instanceId !== undefined) {
+            // Find the block with this instance ID
+            for (const chunk of this.chunks.values()) {
+              if (!chunk.isVisible) continue;
+              
+              for (const [key, block] of chunk.blocks.entries()) {
+                if (block.isInstanced && block.mesh === instanceId && block.type === type) {
+                  return {
+                    block,
+                    face: intersect.face || null
+                  };
+                }
+              }
             }
           }
         }
@@ -415,11 +737,11 @@ class ChunkManager {
     }
   }
   
-  // Update chunks based on player position
+  // Super optimized update method
   public update(playerPosition: THREE.Vector3): void {
     try {
       // Only update chunks every few frames to improve performance
-      if (Math.random() < 0.1) { // 10% chance to update each frame
+      if (Math.random() < 0.03) { // Further reduced chance of updates for better performance
         this.initChunks(playerPosition);
       }
     } catch (error) {
