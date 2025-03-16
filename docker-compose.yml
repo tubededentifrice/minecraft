@@ -1,7 +1,44 @@
 version: '3.8'
 
 services:
-  # PostgreSQL database
+  # Frontend development server
+  minecraft-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_BACKEND_URL=ws://minecraft-backend:8080/ws
+    restart: unless-stopped
+    command: npm run dev -- --host 0.0.0.0
+
+  # Backend server (optional - may experience crates.io connectivity issues)
+  minecraft-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/usr/src/minecraft
+      - backend_data:/data
+    environment:
+      - LOG_LEVEL=debug
+      - SERVER_DATA_PATH=/data
+    restart: unless-stopped
+    profiles:
+      - with-backend
+    # Only uncomment these if needed
+    # depends_on:
+    #  - minecraft-db
+    #  - minecraft-redis
+
+  # PostgreSQL database (optional - for future persistence)
   minecraft-db:
     image: postgres:13-alpine
     environment:
@@ -13,8 +50,10 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    profiles:
+      - with-backend
 
-  # Redis for caching
+  # Redis for caching (optional - for future scaling)
   minecraft-redis:
     image: redis:6-alpine
     command: redis-server --appendonly yes
@@ -23,18 +62,24 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+    profiles:
+      - with-backend
 
-  # Frontend web server (nginx)
-  minecraft-frontend:
+  # Production frontend (Nginx)
+  minecraft-frontend-prod:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "80:80"
     restart: unless-stopped
+    profiles:
+      - production
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  backend_data:
     driver: local 

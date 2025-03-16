@@ -12,7 +12,7 @@ This project aims to create a faithful Minecraft-like experience in the browser 
 - **Scalable backend** implemented in Rust for optimal performance
 - **Modern networking** with WebSockets and binary protocols
 
-The game supports core Minecraft gameplay elements including block manipulation, crafting, survival mechanics, and more, while being optimized for browser environments.
+The game supports core Minecraft gameplay elements including block manipulation, resource gathering, terrain generation, and daylight cycles.
 
 ## Project Structure
 
@@ -27,7 +27,8 @@ The project is organized into several key components:
 ### Frontend
 - React-based UI with Three.js for 3D rendering
 - WebSocket communication with the backend
-- State management using Zustand
+- Full-screen immersive gameplay
+- Dynamic chunk loading based on player position
 
 ## Getting Started
 
@@ -37,62 +38,59 @@ For development, you'll need:
 
 - Node.js 18+ for frontend development
 - Rust 1.67+ for backend development
-- Docker and Docker Compose for local environment
+- Docker and Docker Compose (optional) for containerized deployment
 - Git for version control
 
 ### Setup and Installation
 
-#### Using Docker (Recommended)
+#### Frontend Setup (Recommended)
 
-1. Start the supporting services (PostgreSQL and Redis):
-   ```bash
-   ./start.sh
-   ```
+The frontend can run in standalone mode without requiring the backend:
 
-2. Start the backend server:
-   ```bash
-   cd backend && ./scripts/start-server.sh
-   ```
-
-3. Start the frontend development server:
-   ```bash
-   cd frontend && npm start
-   ```
-
-#### Manual Setup
-
-1. Backend Setup:
-   ```bash
-   cd backend
-   cargo build
-   cargo run --bin minecraft_server
-   ```
-
-2. Frontend Setup:
+1. Install frontend dependencies:
    ```bash
    cd frontend
    npm install
+   ```
+
+2. Start the frontend development server:
+   ```bash
    npm run dev
    ```
 
-3. Access the application at http://localhost:3000
+3. Access the application at http://localhost:5173 (or the port shown in the console)
+
+#### Backend Setup (Optional)
+
+**Note:** The backend requires crates.io connectivity and may experience timeout issues in some network environments.
+
+1. Change to the backend directory:
+   ```bash
+   cd backend
+   ```
+
+2. Build the Rust backend:
+   ```bash
+   cargo build
+   ```
+
+3. Run the server:
+   ```bash
+   cargo run --bin minecraft_server
+   ```
+
+#### Using Docker (Alternative)
+
+For containerized deployment:
+
+1. Build and start all services:
+   ```bash
+   docker-compose up -d
+   ```
+
+2. Access the frontend at http://localhost
 
 ## Development
-
-### Backend Development
-
-The backend is written in Rust and organized into several crates:
-
-- `minecraft_core`: Contains block types, physics, and other core game mechanics
-- `minecraft_world`: Implements world generation, chunk management, and terrain features
-- `minecraft_server`: Provides the WebSocket server and API endpoints
-
-To run the backend in development mode:
-
-```bash
-cd backend
-cargo run --bin minecraft_server
-```
 
 ### Frontend Development
 
@@ -103,27 +101,20 @@ cd frontend
 npm run dev
 ```
 
-## Docker Configuration
+Features implemented:
+- Procedural terrain generation
+- Block breaking and placement
+- Player movement with physics
+- Dynamic chunk loading
+- Daylight cycle
+- Inventory system
+- Water and transparent blocks
 
-The project includes Docker configuration for easy deployment:
+### Backend Development
 
-- `backend/Dockerfile`: Builds the Rust backend services
-- `frontend/Dockerfile`: Sets up an Nginx server for the frontend
-- `docker-compose.yml`: Orchestrates all services including PostgreSQL and Redis
+The backend is written in Rust and organized into crates for modular development. Currently, the server implements basic WebSocket communication and world state management.
 
-## Production Deployment
-
-For production deployment:
-
-1. Build the Docker images:
-   ```bash
-   docker-compose build
-   ```
-
-2. Start the services:
-   ```bash
-   docker-compose up -d
-   ```
+**Known Issue:** The backend may experience crates.io timeout errors during dependency fetching. If this occurs, try using a different network or configure Cargo to use a proxy.
 
 ## Contributing
 
@@ -137,7 +128,7 @@ Contributions are welcome! Please follow these steps:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## Acknowledgments
 
