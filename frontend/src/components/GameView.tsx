@@ -99,116 +99,156 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
 
   // Setup Three.js scene
   useEffect(() => {
-    if (!gameContainerRef.current) return;
+    console.log('GameView: Initializing game scene');
+    if (!gameContainerRef.current) {
+      console.error('GameView: Game container ref is null!');
+      setIsLoading(false);
+      return;
+    }
 
     // Show loading message
     setIsLoading(true);
     
-    // Set a maximum loading time - force hide loading screen after 10 seconds 
+    // Set a maximum loading time - force hide loading screen after 5 seconds 
+    // Reduced from 10 to 5 seconds for better user experience
     const maxLoadingTimeout = setTimeout(() => {
       setIsLoading(false);
-      console.log('Forced loading to complete due to timeout');
-    }, 10000);
+      console.log('GameView: Forced loading to complete due to timeout');
+    }, 5000);
 
-    // Initialize texture manager
-    const textureManager = TextureManager.getInstance();
-    textureManager.loadTextures().then(() => {
-      // Create scene
-      const scene = new THREE.Scene();
-      sceneRef.current = scene;
+    try {
+      // Initialize texture manager
+      console.log('GameView: Initializing TextureManager');
+      const textureManager = TextureManager.getInstance();
+      textureManager.loadTextures()
+        .then(() => {
+          try {
+            console.log('GameView: Textures loaded, creating 3D scene');
+            // Create scene
+            const scene = new THREE.Scene();
+            sceneRef.current = scene;
+            scene.background = new THREE.Color(0x87CEEB); // Set a sky blue background
 
-      // Create camera
-      const camera = new THREE.PerspectiveCamera(
-        75,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-      );
-      camera.position.set(0, 20, 5); // Start higher up to see terrain
-      cameraRef.current = camera;
+            // Create camera
+            console.log('GameView: Creating camera');
+            const camera = new THREE.PerspectiveCamera(
+              75,
+              window.innerWidth / window.innerHeight,
+              0.1,
+              1000
+            );
+            camera.position.set(0, 20, 5); // Start higher up to see terrain
+            cameraRef.current = camera;
 
-      // Create renderer
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      
-      // Check if gameContainerRef is still valid when appending the renderer
-      if (gameContainerRef.current) {
-        gameContainerRef.current.appendChild(renderer.domElement);
-      }
-      
-      rendererRef.current = renderer;
+            // Create renderer
+            console.log('GameView: Creating renderer');
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            // Check if gameContainerRef is still valid when appending the renderer
+            if (gameContainerRef.current) {
+              console.log('GameView: Appending renderer to DOM');
+              gameContainerRef.current.appendChild(renderer.domElement);
+            } else {
+              throw new Error('Game container is no longer available');
+            }
+            
+            rendererRef.current = renderer;
 
-      // Add ambient light
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-      scene.add(ambientLight);
+            // Add ambient light
+            console.log('GameView: Adding ambient light');
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
 
-      // Create skybox and sun
-      skyboxManagerRef.current = new SkyboxManager(scene);
+            // Create skybox and sun
+            console.log('GameView: Creating skybox');
+            skyboxManagerRef.current = new SkyboxManager(scene);
 
-      // Controls
-      const controls = new PointerLockControls(camera, renderer.domElement);
-      controlsRef.current = controls;
-      scene.add(controls.getObject());
+            // Controls
+            console.log('GameView: Setting up controls');
+            const controls = new PointerLockControls(camera, renderer.domElement);
+            controlsRef.current = controls;
+            scene.add(controls.getObject());
 
-      // Initialize chunk manager
-      chunkManagerRef.current = new ChunkManager(scene);
-      chunkManagerRef.current.initChunks(camera.position);
+            // Initialize chunk manager
+            console.log('GameView: Initializing chunk manager');
+            chunkManagerRef.current = new ChunkManager(scene);
+            chunkManagerRef.current.initChunks(camera.position);
 
-      // Handle resize
-      const handleResize = () => {
-        if (cameraRef.current && rendererRef.current) {
-          cameraRef.current.aspect = window.innerWidth / window.innerHeight;
-          cameraRef.current.updateProjectionMatrix();
-          rendererRef.current.setSize(window.innerWidth, window.innerHeight);
-        }
-      };
+            // Handle resize
+            const handleResize = () => {
+              if (cameraRef.current && rendererRef.current) {
+                cameraRef.current.aspect = window.innerWidth / window.innerHeight;
+                cameraRef.current.updateProjectionMatrix();
+                rendererRef.current.setSize(window.innerWidth, window.innerHeight);
+              }
+            };
 
-      window.addEventListener('resize', handleResize);
+            window.addEventListener('resize', handleResize);
 
-      // Start animation loop
-      animate();
+            // Start animation loop
+            console.log('GameView: Starting animation loop');
+            animate();
 
-      // Lock controls on click
-      const handleClick = () => {
-        if (controlsRef.current && !controlsRef.current.isLocked && !showChat) {
-          controlsRef.current.lock();
-        }
-      };
+            // Lock controls on click
+            const handleClick = () => {
+              if (controlsRef.current && !controlsRef.current.isLocked && !showChat) {
+                controlsRef.current.lock();
+              }
+            };
 
-      document.addEventListener('click', handleClick);
+            document.addEventListener('click', handleClick);
 
-      // Connect to server
-      connectToServer();
+            // Connect to server
+            console.log('GameView: Connecting to server');
+            connectToServer();
 
-      // Hide loading message
+            // Hide loading message
+            console.log('GameView: Initialization complete, hiding loading screen');
+            setIsLoading(false);
+            clearTimeout(maxLoadingTimeout);
+
+            // Cleanup
+            return () => {
+              console.log('GameView: Cleaning up');
+              window.removeEventListener('resize', handleResize);
+              document.removeEventListener('click', handleClick);
+              if (rendererRef.current && gameContainerRef.current) {
+                gameContainerRef.current.removeChild(rendererRef.current.domElement);
+              }
+              if (socketRef.current) {
+                socketRef.current.close();
+              }
+              if (chatTimeoutRef.current) {
+                clearTimeout(chatTimeoutRef.current);
+              }
+              clearTimeout(maxLoadingTimeout);
+            };
+          } catch (error) {
+            console.error('GameView: Error during scene setup:', error);
+            setIsLoading(false);
+            clearTimeout(maxLoadingTimeout);
+            return () => {
+              clearTimeout(maxLoadingTimeout);
+            };
+          }
+        })
+        .catch(error => {
+          console.error('GameView: Error loading textures:', error);
+          setIsLoading(false);
+          clearTimeout(maxLoadingTimeout);
+        });
+    } catch (error) {
+      console.error('GameView: Critical initialization error:', error);
       setIsLoading(false);
       clearTimeout(maxLoadingTimeout);
-
-      // Cleanup
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        document.removeEventListener('click', handleClick);
-        if (rendererRef.current && gameContainerRef.current) {
-          gameContainerRef.current.removeChild(rendererRef.current.domElement);
-        }
-        if (socketRef.current) {
-          socketRef.current.close();
-        }
-        if (chatTimeoutRef.current) {
-          clearTimeout(chatTimeoutRef.current);
-        }
-        clearTimeout(maxLoadingTimeout);
-      };
-    }).catch(error => {
-      console.error('Error loading textures:', error);
-      setIsLoading(false);
-      clearTimeout(maxLoadingTimeout);
-    });
+    }
     
     return () => {
+      console.log('GameView: Component unmounting, cleaning up loadingTimeout');
       clearTimeout(maxLoadingTimeout);
     };
   }, []);
@@ -490,10 +530,10 @@ const GameView: React.FC<GameViewProps> = ({ onExit }) => {
           // Update chunks based on player position
           chunkManagerRef.current.update(playerPos);
           
-          // Update chunk count in debug info - use internal method instead of accessing private property
+          // Update chunk count in debug info - use the getChunkCount method
           setDebugInfo(prev => ({
             ...prev,
-            chunkCount: Object.keys(chunkManagerRef.current || {}).length || 0
+            chunkCount: chunkManagerRef.current ? chunkManagerRef.current.getChunkCount() : 0
           }));
         }
         

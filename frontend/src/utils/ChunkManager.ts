@@ -30,6 +30,7 @@ class ChunkManager {
   private blockGeometry: THREE.BoxGeometry;
   
   constructor(scene: THREE.Scene) {
+    console.log('ChunkManager: Initializing');
     this.chunks = new Map();
     this.noiseGenerator = new NoiseGenerator(Math.random() * 10000);
     this.scene = scene;
@@ -37,6 +38,7 @@ class ChunkManager {
     
     // Create a shared geometry for all blocks
     this.blockGeometry = new THREE.BoxGeometry(1, 1, 1);
+    console.log('ChunkManager: Initialization complete');
   }
   
   // Get chunk key from position
@@ -49,47 +51,110 @@ class ChunkManager {
     return `${x},${y},${z}`;
   }
   
+  // Get chunk count
+  public getChunkCount(): number {
+    return this.chunks.size;
+  }
+  
   // Initialize chunks around player
   public initChunks(playerPosition: THREE.Vector3): void {
-    const playerChunkX = Math.floor(playerPosition.x / CHUNK_SIZE);
-    const playerChunkZ = Math.floor(playerPosition.z / CHUNK_SIZE);
-    
-    // Generate chunks in render distance
-    for (let x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
-      for (let z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
-        this.getOrCreateChunk(x, z);
+    try {
+      console.log('ChunkManager: Initializing chunks around player position', playerPosition);
+      const playerChunkX = Math.floor(playerPosition.x / CHUNK_SIZE);
+      const playerChunkZ = Math.floor(playerPosition.z / CHUNK_SIZE);
+      
+      // Generate chunks in render distance
+      // Start with just a few chunks first for faster initial loading
+      const initialDistance = 2; // Smaller initial render distance
+      console.log(`ChunkManager: Generating initial ${initialDistance}x${initialDistance} chunks`);
+      
+      for (let x = playerChunkX - initialDistance; x <= playerChunkX + initialDistance; x++) {
+        for (let z = playerChunkZ - initialDistance; z <= playerChunkZ + initialDistance; z++) {
+          this.getOrCreateChunk(x, z);
+        }
       }
+      
+      // Schedule the rest of the chunks to be loaded asynchronously
+      setTimeout(() => {
+        console.log('ChunkManager: Loading remaining chunks in render distance');
+        for (let x = playerChunkX - RENDER_DISTANCE; x <= playerChunkX + RENDER_DISTANCE; x++) {
+          for (let z = playerChunkZ - RENDER_DISTANCE; z <= playerChunkZ + RENDER_DISTANCE; z++) {
+            // Skip already loaded chunks
+            if (Math.abs(x - playerChunkX) <= initialDistance && Math.abs(z - playerChunkZ) <= initialDistance) {
+              continue;
+            }
+            this.getOrCreateChunk(x, z);
+          }
+        }
+        
+        // Unload chunks outside render distance
+        this.unloadDistantChunks(playerPosition);
+        console.log('ChunkManager: All chunks loaded, count:', this.chunks.size);
+      }, 1000); // Delay loading of additional chunks
+    } catch (error) {
+      console.error('ChunkManager: Error initializing chunks:', error);
+      // Create at least one chunk to ensure something is visible
+      this.getOrCreateChunk(0, 0);
     }
-    
-    // Unload chunks outside render distance
-    this.unloadDistantChunks(playerPosition);
   }
   
   // Get or create a chunk at specified coordinates
   private getOrCreateChunk(chunkX: number, chunkZ: number): Chunk {
-    const chunkKey = `${chunkX},${chunkZ}`;
-    
-    if (!this.chunks.has(chunkKey)) {
-      // Create new chunk
-      const chunk: Chunk = {
+    try {
+      const chunkKey = `${chunkX},${chunkZ}`;
+      
+      if (!this.chunks.has(chunkKey)) {
+        // Create new chunk
+        const chunk: Chunk = {
+          position: new THREE.Vector2(chunkX, chunkZ),
+          blocks: new Map(),
+          isGenerated: false,
+          mesh: new THREE.Group()
+        };
+        
+        this.chunks.set(chunkKey, chunk);
+        
+        // Generate terrain for this chunk
+        this.generateTerrain(chunk);
+        
+        // Add chunk mesh to scene
+        if (chunk.mesh) {
+          this.scene.add(chunk.mesh);
+        }
+      }
+      
+      return this.chunks.get(chunkKey)!;
+    } catch (error) {
+      console.error('ChunkManager: Error creating chunk:', error);
+      // Return a default empty chunk
+      const defaultChunk: Chunk = {
         position: new THREE.Vector2(chunkX, chunkZ),
         blocks: new Map(),
-        isGenerated: false,
+        isGenerated: true,
         mesh: new THREE.Group()
       };
       
-      this.chunks.set(chunkKey, chunk);
+      // Add a ground plane for the default chunk
+      const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x567D46 });
+      const groundMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE),
+        groundMaterial
+      );
+      groundMesh.rotation.x = -Math.PI / 2;
+      groundMesh.position.set(
+        chunkX * CHUNK_SIZE + CHUNK_SIZE / 2, 
+        0, 
+        chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2
+      );
       
-      // Generate terrain for this chunk
-      this.generateTerrain(chunk);
-      
-      // Add chunk mesh to scene
-      if (chunk.mesh) {
-        this.scene.add(chunk.mesh);
+      if (defaultChunk.mesh) {
+        defaultChunk.mesh.add(groundMesh);
+        this.scene.add(defaultChunk.mesh);
       }
+      
+      this.chunks.set(`${chunkX},${chunkZ}`, defaultChunk);
+      return defaultChunk;
     }
-    
-    return this.chunks.get(chunkKey)!;
   }
   
   // Remove chunks that are too far from player
@@ -310,44 +375,56 @@ class ChunkManager {
   
   // Cast ray and return the block that was hit
   public castRay(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance: number = 5): { block: Block, face: THREE.Face | null } | null {
-    const raycaster = new THREE.Raycaster(origin, direction.normalize(), 0, maxDistance);
-    const meshes: THREE.Mesh[] = [];
-    
-    // Collect all block meshes in all chunks
-    for (const chunk of this.chunks.values()) {
-      for (const block of chunk.blocks.values()) {
-        if (block.mesh) {
-          meshes.push(block.mesh);
-        }
-      }
-    }
-    
-    // Cast ray
-    const intersects = raycaster.intersectObjects(meshes, false);
-    
-    if (intersects.length > 0) {
-      const intersect = intersects[0];
-      const mesh = intersect.object as THREE.Mesh;
+    try {
+      const raycaster = new THREE.Raycaster(origin, direction.normalize(), 0, maxDistance);
+      const meshes: THREE.Mesh[] = [];
       
-      // Find the block that owns this mesh
+      // Collect all block meshes in all chunks
       for (const chunk of this.chunks.values()) {
-        for (const [key, block] of chunk.blocks.entries()) {
-          if (block.mesh === mesh) {
-            return { 
-              block, 
-              face: intersect.face || null 
-            };
+        for (const block of chunk.blocks.values()) {
+          if (block.mesh) {
+            meshes.push(block.mesh);
           }
         }
       }
+      
+      // Cast ray
+      const intersects = raycaster.intersectObjects(meshes, false);
+      
+      if (intersects.length > 0) {
+        const intersect = intersects[0];
+        const mesh = intersect.object as THREE.Mesh;
+        
+        // Find the block that owns this mesh
+        for (const chunk of this.chunks.values()) {
+          for (const [key, block] of chunk.blocks.entries()) {
+            if (block.mesh === mesh) {
+              return { 
+                block, 
+                face: intersect.face || null 
+              };
+            }
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('ChunkManager: Error in castRay:', error);
+      return null;
     }
-    
-    return null;
   }
   
   // Update chunks based on player position
   public update(playerPosition: THREE.Vector3): void {
-    this.initChunks(playerPosition);
+    try {
+      // Only update chunks every few frames to improve performance
+      if (Math.random() < 0.1) { // 10% chance to update each frame
+        this.initChunks(playerPosition);
+      }
+    } catch (error) {
+      console.error('ChunkManager: Error updating chunks:', error);
+    }
   }
 }
 
